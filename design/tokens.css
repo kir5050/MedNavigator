@@ -1,0 +1,55 @@
+:root {
+  /* Palette */
+  --color-primary: #2563EB;
+  --color-primary-hover: #1d4ed8;
+  --color-bg: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-text: #1E293B;
+  --color-text-secondary: #64748B;
+  --color-border: #E2E8F0;
+
+  /* Triage levels */
+  --triage-emergency: #DC2626;
+  --triage-emergency-bg: #FEE2E2;
+  --triage-urgent: #F59E0B;
+  --triage-urgent-bg: #FEF3C7;
+  --triage-routine: #10B981;
+  --triage-routine-bg: #D1FAE5;
+  --triage-selfcare: #6B7280;
+  --triage-selfcare-bg: #F3F4F6;
+
+  /* Typography */
+  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 24px;
+  --font-size-2xl: 32px;
+  --line-height: 1.5;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* Radii */
+  --radius-button: 12px;
+  --radius-card: 16px;
+  --radius-bubble-user: 16px 16px 4px 16px;
+  --radius-bubble-system: 16px 16px 16px 4px;
+  --radius-input: 12px;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-modal: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-button: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+  /* Sizes */
+  --touch-target: 44px;
+  --max-width: 480px;
+  --header-height: 56px;
+  --input-height: 52px;
+}

@@ -1,0 +1,259 @@
+openapi: 3.0.3
+info:
+  title: MedNavigator API
+  description: AI-powered medical triage routing service (informational only)
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+paths:
+  /api/v1/session/start:
+    post:
+      summary: Start a new triage session
+      operationId: startSession
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStartResponse"
+
+  /api/v1/session/{session_id}/message:
+    post:
+      summary: Send a message in the session
+      operationId: sendMessage
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageRequest"
+      responses:
+        "200":
+          description: Assistant response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "404":
+          description: Session not found
+        "410":
+          description: Session expired
+
+  /api/v1/session/{session_id}/result:
+    get:
+      summary: Get triage result for completed session
+      operationId: getResult
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Triage result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriageResult"
+        "404":
+          description: Session not found
+        "409":
+          description: Session not yet completed
+
+  /api/v1/session/{session_id}/pdf:
+    get:
+      summary: Download visit preparation PDF
+      operationId: downloadPdf
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: PDF document
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Session not found
+        "409":
+          description: Session not yet completed
+
+  /api/v1/feedback:
+    post:
+      summary: Submit user feedback
+      operationId: submitFeedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackRequest"
+      responses:
+        "201":
+          description: Feedback recorded
+
+  /api/v1/analytics/dashboard:
+    get:
+      summary: Get analytics dashboard data (protected)
+      operationId: getDashboard
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardResponse"
+        "401":
+          description: Unauthorized
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    SessionStartResponse:
+      type: object
+      required: [session_id, message, disclaimer]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+          description: Greeting and first question from assistant
+          example: "Здравствуйте! Я помогу вам разобраться, к какому специалисту обратиться. Расскажите, что вас беспокоит?"
+        disclaimer:
+          type: string
+          example: "Информация носит справочный характер и не заменяет консультацию врача"
+
+    MessageRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          maxLength: 2000
+          example: "У меня болит голова уже третий день"
+
+    MessageResponse:
+      type: object
+      required: [message, session_status, disclaimer]
+      properties:
+        message:
+          type: string
+          description: Assistant response
+        session_status:
+          type: string
+          enum: [collecting, triaging, completed, emergency]
+        disclaimer:
+          type: string
+        extracted_symptoms:
+          type: array
+          items:
+            type: string
+          description: Symptoms extracted so far
+        is_emergency:
+          type: boolean
+          default: false
+        emergency_message:
+          type: string
+          description: Present only if is_emergency=true
+
+    TriageResult:
+      type: object
+      required: [urgency, specialists, symptoms_summary, preparation, disclaimer]
+      properties:
+        urgency:
+          type: string
+          enum: [low, medium, high, emergency]
+        specialists:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpecialistRecommendation"
+        symptoms_summary:
+          type: string
+          description: Human-readable summary of collected symptoms
+        preparation:
+          type: string
+          description: How to prepare for the visit
+        disclaimer:
+          type: string
+
+    SpecialistRecommendation:
+      type: object
+      required: [specialty, reason]
+      properties:
+        specialty:
+          type: string
+          example: "Невролог"
+        reason:
+          type: string
+          example: "Головные боли могут быть связаны с неврологическими причинами"
+        priority:
+          type: integer
+          minimum: 1
+          description: "1 = most recommended"
+
+    FeedbackRequest:
+      type: object
+      required: [session_id, rating]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 1000
+        was_helpful:
+          type: boolean
+
+    DashboardResponse:
+      type: object
+      properties:
+        total_sessions:
+          type: integer
+        completed_sessions:
+          type: integer
+        avg_rating:
+          type: number
+        top_specialties:
+          type: array
+          items:
+            type: object
+            properties:
+              specialty:
+                type: string
+              count:
+                type: integer
+        emergency_count:
+          type: integer
+        period_days:
+          type: integer
+          default: 30

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2563EB" />
+  <meta name="description" content="MedNavigator — AI-навигатор медицинской маршрутизации. Узнайте, к какому врачу обратиться." />
+  <title>MedNavigator — Узнайте, к какому врачу обратиться</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <h1>Не знаете, к какому врачу идти?</h1>
+    <p class="hero-sub">Опишите симптомы — мы подскажем специалиста, подготовим выписку и поможем подготовиться к визиту</p>
+    <a href="/app" class="btn-cta">Проверить симптомы</a>
+    <p class="hero-note">Бесплатно. Без регистрации. Без сбора персональных данных.</p>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="steps">
+  <div class="container">
+    <h2>Как это работает</h2>
+    <div class="steps-grid">
+      <div class="step">
+        <div class="step-icon">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#EFF6FF"/><path d="M12 20h16M20 12v16" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round"/></svg>
+        </div>
+        <h3>1. Опишите симптомы</h3>
+        <p>Расскажите своими словами, что вас беспокоит. Система задаст уточняющие вопросы.</p>
+      </div>
+      <div class="step">
+        <div class="step-icon">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#EFF6FF"/><circle cx="20" cy="20" r="8" stroke="#2563EB" strokeWidth="2.5"/><path d="M20 16v4l3 3" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round"/></svg>
+        </div>
+        <h3>2. Получите рекомендацию</h3>
+        <p>Узнайте, к какому специалисту обратиться и насколько это срочно.</p>
+      </div>
+      <div class="step">
+        <div class="step-icon">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#EFF6FF"/><rect x="12" y="10" width="16" height="20" rx="2" stroke="#2563EB" strokeWidth="2.5"/><path d="M16 16h8M16 20h8M16 24h4" stroke="#2563EB" strokeWidth="2" strokeLinecap="round"/></svg>
+        </div>
+        <h3>3. Скачайте выписку</h3>
+        <p>PDF-документ с описанием жалоб, чеклистом подготовки и вопросами для врача.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- For business -->
+<section class="b2b">
+  <div class="container">
+    <h2>Для клиник и страховых компаний</h2>
+    <p class="b2b-desc">Интегрируйте MedNavigator для предварительной маршрутизации пациентов. Снижение нагрузки на колл-центр, повышение точности записи к специалистам.</p>
+    <form class="b2b-form" id="b2b-form">
+      <input type="text" name="name" placeholder="Имя" required />
+      <input type="email" name="email" placeholder="Email" required />
+      <input type="text" name="company" placeholder="Компания" />
+      <textarea name="message" placeholder="Сообщение" rows="3"></textarea>
+      <button type="submit" class="btn-cta btn-cta--sm">Отправить</button>
+    </form>
+    <p class="form-status" id="form-status"></p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq">
+  <div class="container">
+    <h2>Частые вопросы</h2>
+    <div class="faq-list">
+      <details class="faq-item">
+        <summary>Это заменяет поход к врачу?</summary>
+        <p>Нет. MedNavigator — информационный сервис. Он помогает определить направление, но не ставит диагнозы и не назначает лечение. Визит к врачу обязателен.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Мои данные сохраняются?</summary>
+        <p>Мы не собираем персональные данные. Сессия анонимна и автоматически удаляется через 24 часа. Мы не требуем регистрации.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Насколько точны рекомендации?</summary>
+        <p>Система основана на базе знаний из 50+ симптомов и 20 врачебных специальностей. При сомнениях всегда рекомендуется более высокий уровень срочности для вашей безопасности.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Что делать в экстренной ситуации?</summary>
+        <p>При экстренных симптомах (боль в груди, потеря сознания, сильное кровотечение) система немедленно рекомендует вызвать скорую помощь: 103 или 112.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Сервис бесплатный?</summary>
+        <p>Да, для пациентов сервис полностью бесплатный.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Какие технологии используются?</summary>
+        <p>Мы используем современные языковые модели AI для анализа симптомов в сочетании с медицинской базой знаний, составленной при консультации с врачами.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="container">
+    <p class="footer-disclaimer">
+      MedNavigator — информационный сервис. Не является медицинским изделием.
+      Не ставит диагнозы и не назначает лечение.
+      Информация носит справочный характер и не заменяет консультацию врача.
+    </p>
+    <p class="footer-copy">&copy; 2026 MedNavigator</p>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('b2b-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const status = document.getElementById('form-status');
+    status.textContent = 'Спасибо! Мы свяжемся с вами в ближайшее время.';
+    status.style.color = '#10B981';
+    this.reset();
+  });
+</script>
+
+</body>
+</html>

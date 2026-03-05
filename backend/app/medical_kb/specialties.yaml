@@ -1,0 +1,201 @@
+# Medical specialties mapping
+# area_groups -> specialties with visit preparation checklists
+
+specialties:
+  therapist:
+    name: "Терапевт"
+    description: "Врач общей практики, первичное звено"
+    areas: [general]
+    preparation:
+      - "Измерьте температуру и давление перед визитом"
+      - "Составьте список всех принимаемых лекарств"
+      - "Вспомните, когда начались симптомы"
+      - "Возьмите результаты последних анализов (если есть)"
+
+  neurologist:
+    name: "Невролог"
+    description: "Заболевания нервной системы"
+    areas: [neurological, head]
+    symptoms_hint: [headache, dizziness, numbness, tremor, memory_problems]
+    preparation:
+      - "Запишите частоту и характер головных болей"
+      - "Отметьте, есть ли связь с временем суток или нагрузкой"
+      - "Возьмите результаты МРТ/КТ головного мозга (если есть)"
+      - "Составьте список принимаемых лекарств"
+
+  cardiologist:
+    name: "Кардиолог"
+    description: "Заболевания сердечно-сосудистой системы"
+    areas: [chest]
+    symptoms_hint: [chest_pain, heart_palpitations, shortness_of_breath, chest_tightness]
+    preparation:
+      - "Измерьте давление утром и вечером за 3 дня"
+      - "Возьмите результаты ЭКГ (если есть)"
+      - "Запишите, при какой нагрузке появляется одышка"
+      - "Составьте список принимаемых лекарств"
+
+  gastroenterologist:
+    name: "Гастроэнтеролог"
+    description: "Заболевания ЖКТ"
+    areas: [abdomen]
+    symptoms_hint: [stomach_pain, nausea, vomiting, diarrhea, constipation, heartburn, bloating]
+    preparation:
+      - "Ведите дневник питания 2-3 дня до визита"
+      - "Отметьте связь симптомов с приемом пищи"
+      - "Возьмите результаты УЗИ брюшной полости (если есть)"
+      - "Приходите натощак (если планируется обследование)"
+
+  pulmonologist:
+    name: "Пульмонолог"
+    description: "Заболевания органов дыхания"
+    areas: [chest]
+    symptoms_hint: [cough, shortness_of_breath, chest_tightness]
+    preparation:
+      - "Запишите характер кашля (сухой/влажный, время суток)"
+      - "Возьмите результаты флюорографии/рентгена (если есть)"
+      - "Отметьте, курите ли вы и как давно"
+      - "Возьмите результаты спирометрии (если есть)"
+
+  otolaryngologist:
+    name: "Оториноларинголог (ЛОР)"
+    description: "Заболевания уха, горла, носа"
+    areas: [throat, head]
+    symptoms_hint: [sore_throat, ear_pain, hearing_loss, runny_nose, nosebleed, snoring, difficulty_swallowing]
+    preparation:
+      - "Запишите длительность симптомов"
+      - "Отметьте, была ли температура"
+      - "Возьмите результаты аудиограммы (если есть, для проблем со слухом)"
+
+  ophthalmologist:
+    name: "Офтальмолог"
+    description: "Заболевания глаз"
+    areas: [head]
+    symptoms_hint: [eye_pain, vision_problems]
+    preparation:
+      - "Возьмите очки или линзы, если носите"
+      - "Возьмите результаты последней проверки зрения"
+      - "Не закапывайте капли перед визитом (если не назначено)"
+
+  dermatologist:
+    name: "Дерматолог"
+    description: "Заболевания кожи"
+    areas: [skin]
+    symptoms_hint: [skin_rash, itching, hair_loss, bruising]
+    preparation:
+      - "Сфотографируйте высыпания при хорошем освещении"
+      - "Отметьте, когда впервые появились"
+      - "Не наносите кремы/мази на пораженные участки перед осмотром"
+      - "Запишите, какие средства уже пробовали"
+
+  orthopedist:
+    name: "Ортопед-травматолог"
+    description: "Заболевания опорно-двигательного аппарата"
+    areas: [musculoskeletal, back]
+    symptoms_hint: [back_pain, neck_pain, joint_pain, muscle_pain, leg_pain, arm_pain]
+    preparation:
+      - "Возьмите рентгеновские снимки (если есть)"
+      - "Запишите, при каких движениях усиливается боль"
+      - "Отметьте, были ли травмы"
+      - "Наденьте удобную одежду для осмотра"
+
+  endocrinologist:
+    name: "Эндокринолог"
+    description: "Заболевания эндокринной системы"
+    areas: [endocrine]
+    symptoms_hint: [weight_gain, weight_loss, thirst, fatigue, hair_loss]
+    preparation:
+      - "Сдайте ОАК и ТТГ перед визитом (если нет свежих результатов)"
+      - "Измерьте вес утром натощак"
+      - "Запишите изменения веса за последние месяцы"
+      - "Возьмите результаты УЗИ щитовидной железы (если есть)"
+
+  urologist:
+    name: "Уролог"
+    description: "Заболевания мочевыделительной системы"
+    areas: [urogenital]
+    symptoms_hint: [urination_problems]
+    preparation:
+      - "Сдайте общий анализ мочи перед визитом"
+      - "Запишите частоту мочеиспускания"
+      - "Возьмите результаты УЗИ почек и мочевого пузыря (если есть)"
+
+  gynecologist:
+    name: "Гинеколог"
+    description: "Женское здоровье"
+    areas: [urogenital]
+    symptoms_hint: [menstrual_problems]
+    preparation:
+      - "Вспомните дату последней менструации"
+      - "Запишите длительность и регулярность цикла"
+      - "Возьмите результаты последнего УЗИ (если есть)"
+
+  psychiatrist:
+    name: "Психиатр / Психотерапевт"
+    description: "Психические расстройства, тревога, депрессия"
+    areas: [mental]
+    symptoms_hint: [anxiety, depression_symptoms, insomnia]
+    preparation:
+      - "Запишите, как давно вас беспокоят симптомы"
+      - "Отметьте, что ухудшает и что облегчает состояние"
+      - "Составьте список принимаемых лекарств"
+      - "Не стесняйтесь рассказать все, что считаете важным"
+
+  allergist:
+    name: "Аллерголог-иммунолог"
+    description: "Аллергические реакции, иммунные нарушения"
+    areas: [skin, general]
+    symptoms_hint: [itching, skin_rash, runny_nose, frequent_infections]
+    preparation:
+      - "Запишите, после чего появляются симптомы"
+      - "Возьмите результаты аллергопроб (если есть)"
+      - "Не принимайте антигистаминные за 3 дня до визита (если планируются пробы)"
+
+  rheumatologist:
+    name: "Ревматолог"
+    description: "Аутоиммунные и воспалительные заболевания суставов"
+    areas: [musculoskeletal]
+    symptoms_hint: [joint_pain, swelling, muscle_pain]
+    preparation:
+      - "Запишите, какие суставы болят и когда (утром/вечером)"
+      - "Отметьте утреннюю скованность и её длительность"
+      - "Возьмите результаты ревмопроб и рентген (если есть)"
+
+  hematologist:
+    name: "Гематолог"
+    description: "Заболевания крови"
+    areas: [general]
+    symptoms_hint: [fatigue, bruising, nosebleed]
+    preparation:
+      - "Сдайте общий анализ крови с лейкоцитарной формулой"
+      - "Запишите, когда появились синяки/кровотечения"
+      - "Возьмите все результаты анализов крови"
+
+  dentist:
+    name: "Стоматолог"
+    description: "Заболевания зубов и полости рта"
+    areas: [head]
+    symptoms_hint: [toothache]
+    preparation:
+      - "Почистите зубы перед визитом"
+      - "Возьмите панорамный снимок зубов (если есть)"
+      - "Запишите, какой зуб болит и характер боли"
+
+  phlebologist:
+    name: "Флеболог"
+    description: "Заболевания вен"
+    areas: [musculoskeletal]
+    symptoms_hint: [leg_pain, swelling]
+    preparation:
+      - "Возьмите результаты УЗДГ вен нижних конечностей (если есть)"
+      - "Отметьте, когда усиливается тяжесть в ногах"
+      - "Наденьте удобную одежду для осмотра ног"
+
+  somnologist:
+    name: "Сомнолог"
+    description: "Нарушения сна"
+    areas: [general]
+    symptoms_hint: [insomnia, snoring]
+    preparation:
+      - "Ведите дневник сна 5-7 дней до визита"
+      - "Запишите время засыпания, пробуждения, качество сна"
+      - "Отметьте храп и остановки дыхания (со слов близких)"
