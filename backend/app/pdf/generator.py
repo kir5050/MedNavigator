@@ -1,57 +1,72 @@
 from datetime import datetime, timezone
+from html import escape
 
 from weasyprint import HTML
 
 
 class PDFGenerator:
+    URGENCY_MAP = {
+        "low": ("Плановый визит", "#10B981", "#D1FAE5"),
+        "medium": ("Рекомендуется записаться в ближайшие 1-2 дня", "#F59E0B", "#FEF3C7"),
+        "high": ("Рекомендуется обратиться к врачу сегодня", "#EF4444", "#FEE2E2"),
+        "emergency": ("ТРЕБУЕТСЯ ЭКСТРЕННАЯ ПОМОЩЬ — позвоните 103", "#DC2626", "#FEE2E2"),
+    }
+
     @staticmethod
     def generate(data: dict, session_id: str) -> bytes:
         now = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M UTC")
-
-        complaints_medical = data.get("complaints_medical", "")
-        complaints_simple = data.get("complaints_simple", "")
-        timeline = data.get("timeline", "")
-        questions = data.get("questions_for_doctor", [])
-        what_to_bring = data.get("what_to_bring", [])
-        specialists = data.get("specialists", [])
         urgency = data.get("urgency", "medium")
-        preparation = data.get("preparation", [])
+        urgency_text, urgency_color, urgency_bg = PDFGenerator.URGENCY_MAP.get(
+            urgency, PDFGenerator.URGENCY_MAP["medium"]
+        )
 
-        urgency_map = {
-            "low": "Плановый визит",
-            "medium": "В ближайшие 1-2 дня",
-            "high": "Рекомендуется обратиться сегодня",
-            "emergency": "ЭКСТРЕННАЯ ПОМОЩЬ",
-        }
-        urgency_text = urgency_map.get(urgency, urgency)
+        sections = []
 
-        specialists_html = ""
-        for i, spec in enumerate(specialists, 1):
-            name = spec.get("specialty", "") if isinstance(spec, dict) else str(spec)
-            reason = spec.get("reason", "") if isinstance(spec, dict) else ""
-            prep = spec.get("preparation", []) if isinstance(spec, dict) else []
-            specialists_html += f"<h3>{i}. {name}</h3>"
-            if reason:
-                specialists_html += f"<p>{reason}</p>"
-            if prep:
-                specialists_html += "<p><strong>Подготовка к визиту:</strong></p><ul>"
-                for item in prep:
-                    specialists_html += f"<li>{item}</li>"
-                specialists_html += "</ul>"
+        # --- 1. Symptoms / complaints ---
+        symptoms_section = PDFGenerator._build_symptoms_section(data)
+        if symptoms_section:
+            sections.append(symptoms_section)
 
-        questions_html = ""
+        # --- 2. User's answers from conversation ---
+        history_section = PDFGenerator._build_history_section(data)
+        if history_section:
+            sections.append(history_section)
+
+        # --- 3. Uploaded document analyses ---
+        docs_section = PDFGenerator._build_documents_section(data)
+        if docs_section:
+            sections.append(docs_section)
+
+        # --- 4. Specialists ---
+        specialists_section = PDFGenerator._build_specialists_section(data)
+        if specialists_section:
+            sections.append(specialists_section)
+
+        # --- 5. Routing explanation ---
+        explanation = data.get("routing_explanation", "")
+        if explanation:
+            sections.append(
+                f'<h2>Пояснение</h2><p>{escape(explanation)}</p>'
+            )
+
+        # --- 6. Questions for doctor (LLM-generated) ---
+        questions = data.get("questions_for_doctor", [])
         if questions:
-            questions_html = "<h2>Вопросы для врача</h2><ol>"
-            for q in questions:
-                questions_html += f"<li>{q}</li>"
-            questions_html += "</ol>"
+            items = "".join(f"<li>{escape(str(q))}</li>" for q in questions)
+            sections.append(f"<h2>Вопросы для врача</h2><ol>{items}</ol>")
 
-        bring_html = ""
+        # --- 7. What to bring (LLM-generated) ---
+        what_to_bring = data.get("what_to_bring", [])
         if what_to_bring:
-            bring_html = "<h2>Что взять с собой</h2><ul>"
-            for item in what_to_bring:
-                bring_html += f"<li>{item}</li>"
-            bring_html += "</ul>"
+            items = "".join(f"<li>{escape(str(item))}</li>" for item in what_to_bring)
+            sections.append(f"<h2>Что взять с собой</h2><ul>{items}</ul>")
+
+        # --- 8. Red flags ---
+        red_flags_section = PDFGenerator._build_red_flags_section(data)
+        if red_flags_section:
+            sections.append(red_flags_section)
+
+        body_content = "\n\n".join(sections)
 
         html_content = f"""<!DOCTYPE html>
 <html lang="ru">
@@ -61,107 +76,312 @@ class PDFGenerator:
     @page {{
         size: A4;
         margin: 2cm;
+        @bottom-center {{
+            content: "Страница " counter(page) " из " counter(pages);
+            font-size: 8pt;
+            color: #999;
+        }}
     }}
     body {{
         font-family: sans-serif;
-        font-size: 12pt;
-        line-height: 1.5;
-        color: #333;
+        font-size: 11pt;
+        line-height: 1.6;
+        color: #1E293B;
     }}
     .header {{
-        border-bottom: 2px solid #2563eb;
-        padding-bottom: 10px;
-        margin-bottom: 20px;
+        border-bottom: 3px solid #2563EB;
+        padding-bottom: 12px;
+        margin-bottom: 24px;
     }}
     .header h1 {{
-        color: #2563eb;
-        margin: 0;
+        color: #2563EB;
+        margin: 0 0 4px 0;
         font-size: 18pt;
     }}
     .header .subtitle {{
-        color: #666;
+        color: #64748B;
         font-size: 10pt;
     }}
-    .urgency {{
-        background: #fef3c7;
-        border-left: 4px solid #f59e0b;
-        padding: 10px 15px;
-        margin: 15px 0;
+    .urgency-box {{
+        background: {urgency_bg};
+        border-left: 5px solid {urgency_color};
+        padding: 12px 16px;
+        margin: 16px 0 24px 0;
+        border-radius: 0 8px 8px 0;
     }}
-    .urgency.high {{
-        background: #fee2e2;
-        border-left-color: #ef4444;
+    .urgency-box strong {{
+        color: {urgency_color};
+        font-size: 13pt;
     }}
     h2 {{
-        color: #1e40af;
-        font-size: 14pt;
-        border-bottom: 1px solid #ddd;
-        padding-bottom: 5px;
+        color: #1E40AF;
+        font-size: 13pt;
+        border-bottom: 1px solid #E2E8F0;
+        padding-bottom: 6px;
+        margin-top: 24px;
+        margin-bottom: 12px;
     }}
     h3 {{
-        color: #1e3a5f;
-        font-size: 12pt;
-        margin-bottom: 5px;
+        color: #1E3A5F;
+        font-size: 11pt;
+        margin: 12px 0 4px 0;
     }}
-    .disclaimer {{
-        margin-top: 30px;
-        padding: 10px;
-        background: #f3f4f6;
-        border: 1px solid #d1d5db;
-        font-size: 9pt;
-        color: #666;
-    }}
-    .footer {{
-        margin-top: 20px;
-        font-size: 8pt;
-        color: #999;
-        text-align: center;
+    p {{
+        margin: 4px 0 8px 0;
     }}
     ul, ol {{
-        padding-left: 20px;
+        padding-left: 24px;
+        margin: 4px 0 12px 0;
     }}
     li {{
-        margin-bottom: 5px;
+        margin-bottom: 4px;
+    }}
+    .specialist-card {{
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 12px;
+        page-break-inside: avoid;
+    }}
+    .specialist-card h3 {{
+        color: #2563EB;
+        margin: 0 0 4px 0;
+    }}
+    .specialist-card .reason {{
+        color: #475569;
+        font-size: 10pt;
+        margin-bottom: 8px;
+    }}
+    .specialist-card .prep-title {{
+        font-weight: 600;
+        font-size: 10pt;
+        margin-bottom: 4px;
+    }}
+    .specialist-card ul {{
+        margin: 0;
+        font-size: 10pt;
+    }}
+    .red-flags {{
+        background: #FEE2E2;
+        border: 2px solid #EF4444;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 16px 0;
+        page-break-inside: avoid;
+    }}
+    .red-flags h2 {{
+        color: #DC2626;
+        border-bottom: none;
+        margin-top: 0;
+        padding-bottom: 0;
+    }}
+    .symptom-tag {{
+        display: inline-block;
+        background: #EFF6FF;
+        border: 1px solid #BFDBFE;
+        border-radius: 6px;
+        padding: 2px 10px;
+        margin: 2px 4px 2px 0;
+        font-size: 10pt;
+        color: #1E40AF;
+    }}
+    .history-item {{
+        margin-bottom: 6px;
+        font-size: 10pt;
+    }}
+    .history-item .label {{
+        font-weight: 600;
+        color: #475569;
+    }}
+    .history-item .text {{
+        color: #1E293B;
+    }}
+    .disclaimer {{
+        margin-top: 32px;
+        padding: 12px 16px;
+        background: #F1F5F9;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        font-size: 9pt;
+        color: #64748B;
+        line-height: 1.5;
+    }}
+    .disclaimer strong {{
+        color: #475569;
+    }}
+    .footer {{
+        margin-top: 16px;
+        font-size: 8pt;
+        color: #94A3B8;
+        text-align: center;
     }}
 </style>
 </head>
 <body>
 
 <div class="header">
-    <h1>MedNavigator — Выписка для визита к врачу</h1>
-    <div class="subtitle">Дата: {now} | Сессия: {session_id[:8]}</div>
+    <h1>MedNavigator — Информационная выписка</h1>
+    <div class="subtitle">Дата формирования: {now} | Сессия: {session_id[:8]}</div>
 </div>
 
-<div class="urgency {"high" if urgency in ("high", "emergency") else ""}">
-    <strong>Рекомендуемая срочность:</strong> {urgency_text}
+<div class="urgency-box">
+    <strong>{escape(urgency_text)}</strong>
 </div>
 
-<h2>Ваши жалобы</h2>
-<p>{complaints_simple}</p>
-
-{"<h2>Описание для врача</h2><p>" + complaints_medical + "</p>" if complaints_medical else ""}
-
-{"<h2>Хронология</h2><p>" + timeline + "</p>" if timeline else ""}
-
-<h2>Рекомендуемые специалисты</h2>
-{specialists_html if specialists_html else "<p>Обратитесь к терапевту для первичного осмотра.</p>"}
-
-{questions_html}
-
-{bring_html}
+{body_content}
 
 <div class="disclaimer">
     <strong>Важно:</strong> Данный документ носит исключительно информационный и справочный характер.
     Он НЕ является медицинским заключением, диагнозом или назначением лечения.
-    Обязательно проконсультируйтесь с квалифицированным врачом. Информация подготовлена
-    автоматически на основе описанных вами симптомов и не заменяет очный осмотр специалиста.
+    Информация подготовлена автоматически на основе описанных вами симптомов и предназначена
+    для подготовки к визиту к врачу. Обязательно проконсультируйтесь с квалифицированным
+    специалистом для постановки диагноза и назначения лечения.
 </div>
 
 <div class="footer">
-    MedNavigator — информационный сервис медицинской маршрутизации
+    MedNavigator — информационный сервис медицинской маршрутизации | mednavigator.ru
 </div>
 
 </body>
 </html>"""
 
         return HTML(string=html_content).write_pdf()
+
+    @staticmethod
+    def _build_symptoms_section(data: dict) -> str:
+        complaints_simple = data.get("complaints_simple", "")
+        complaints_medical = data.get("complaints_medical", "")
+        symptoms = data.get("symptoms_list", [])
+
+        if not complaints_simple and not symptoms:
+            return ""
+
+        parts = ['<h2>Жалобы и симптомы</h2>']
+
+        if complaints_simple:
+            parts.append(f'<p>{escape(complaints_simple)}</p>')
+
+        if symptoms:
+            tags = ""
+            for s in symptoms:
+                if isinstance(s, dict):
+                    name = s.get("name", "")
+                    area = s.get("area", "")
+                    duration = s.get("duration", "")
+                    detail = name
+                    extras = []
+                    if area:
+                        extras.append(area)
+                    if duration:
+                        extras.append(duration)
+                    if extras:
+                        detail += f" ({', '.join(extras)})"
+                else:
+                    detail = str(s)
+                if detail:
+                    tags += f'<span class="symptom-tag">{escape(detail)}</span> '
+            if tags:
+                parts.append(f'<p>{tags}</p>')
+
+        if complaints_medical:
+            parts.append(
+                f'<h2>Описание для врача</h2>'
+                f'<p><em>{escape(complaints_medical)}</em></p>'
+            )
+
+        return "\n".join(parts)
+
+    @staticmethod
+    def _build_history_section(data: dict) -> str:
+        history_lines = data.get("history_lines", [])
+        if not history_lines:
+            return ""
+
+        qa_pairs = []
+        for line in history_lines:
+            if line.startswith("["):
+                continue
+            if line.startswith("Пациент: "):
+                qa_pairs.append(("Пациент", line[len("Пациент: "):]))
+            elif line.startswith("Ассистент: "):
+                qa_pairs.append(("Ассистент", line[len("Ассистент: "):]))
+
+        if not qa_pairs:
+            return ""
+
+        items = ""
+        for label, text in qa_pairs:
+            items += (
+                f'<div class="history-item">'
+                f'<span class="label">{escape(label)}:</span> '
+                f'<span class="text">{escape(text)}</span>'
+                f'</div>'
+            )
+
+        return f"<h2>Ход опроса</h2>{items}"
+
+    @staticmethod
+    def _build_documents_section(data: dict) -> str:
+        uploaded_files = data.get("uploaded_files", [])
+        if not uploaded_files:
+            return ""
+
+        files_with_analysis = [f for f in uploaded_files if f.get("analysis")]
+        if not files_with_analysis:
+            return ""
+
+        items = ""
+        for f in files_with_analysis:
+            filename = escape(f.get("filename", "файл"))
+            analysis = escape(f.get("analysis", ""))
+            items += (
+                f'<div class="specialist-card">'
+                f'<h3>{filename}</h3>'
+                f'<p>{analysis}</p>'
+                f'</div>'
+            )
+
+        return f"<h2>Загруженные документы</h2>{items}"
+
+    @staticmethod
+    def _build_specialists_section(data: dict) -> str:
+        specialists = data.get("specialists", [])
+        if not specialists:
+            return ""
+
+        cards = ""
+        for i, spec in enumerate(specialists, 1):
+            if not isinstance(spec, dict):
+                continue
+            name = escape(spec.get("specialty", "Специалист"))
+            reason = spec.get("reason", "")
+            prep = spec.get("preparation", [])
+
+            card = f'<div class="specialist-card"><h3>{i}. {name}</h3>'
+            if reason:
+                card += f'<p class="reason">{escape(reason)}</p>'
+            if prep:
+                card += '<p class="prep-title">Подготовка к визиту:</p><ul>'
+                for item in prep:
+                    card += f"<li>{escape(str(item))}</li>"
+                card += "</ul>"
+            card += "</div>"
+            cards += card
+
+        return f"<h2>Рекомендуемые специалисты</h2>{cards}"
+
+    @staticmethod
+    def _build_red_flags_section(data: dict) -> str:
+        red_flags = data.get("red_flags", [])
+        if not red_flags:
+            return ""
+
+        items = "".join(f"<li>{escape(str(rf))}</li>" for rf in red_flags)
+        return (
+            '<div class="red-flags">'
+            '<h2>Внимание: тревожные признаки</h2>'
+            f'<ul>{items}</ul>'
+            '<p><strong>При наличии этих симптомов рекомендуется немедленно обратиться за медицинской помощью.</strong></p>'
+            '</div>'
+        )

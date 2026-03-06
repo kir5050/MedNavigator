@@ -111,6 +111,31 @@ class PromptTemplates:
         return system, prompt
 
     @staticmethod
+    def preparation(specialists_json: str, symptoms_json: str, triage_summary: str) -> tuple[str, str]:
+        system = f"""Ты — медицинский информационный ассистент. Сформируй персонализированный чеклист подготовки к визиту для каждого специалиста, ИСХОДЯ ИЗ КОНКРЕТНЫХ СИМПТОМОВ пациента.
+
+{LEGAL_GUARDRAILS}
+
+Правила:
+- 3-5 пунктов на каждого специалиста.
+- Пункты должны быть РЕЛЕВАНТНЫ именно описанным симптомам, а не шаблонные.
+- Простой язык, обращение на «вы».
+- Включай: что записать/отметить, какие обследования взять, как подготовиться к осмотру.
+
+Ответь ТОЛЬКО JSON:
+{{
+  "preparations": {{
+    "Название специалиста": ["пункт 1", "пункт 2", "пункт 3"]
+  }}
+}}"""
+
+        prompt = f"""Специалисты: {specialists_json}
+Симптомы пациента: {symptoms_json}
+Резюме жалоб: {triage_summary}"""
+
+        return system, prompt
+
+    @staticmethod
     def pdf_summary(symptoms_json: str, triage_json: str, routing_json: str, files_summary: str = "") -> tuple[str, str]:
         system = f"""Ты — медицинский ассистент. Сформируй данные для выписки пациента для визита к врачу.
 

@@ -1,11 +1,40 @@
 import json
 import logging
+import re
 
 from app.llm.manager import LLMManager
 from app.medical_kb import MedicalKB
 from app.prompts import PromptTemplates
 
 logger = logging.getLogger(__name__)
+
+
+def extract_json(text: str) -> dict:
+    """Extract JSON from LLM response, stripping markdown code blocks if present."""
+    # Try direct parse first
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Strip markdown code fences
+    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # Try to find first { ... } block
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    raise json.JSONDecodeError("No valid JSON found", text, 0)
 
 
 class TriageEngine:
@@ -35,7 +64,7 @@ class TriageEngine:
         system, prompt = PromptTemplates.symptom_extraction(text, history)
         extraction = await self.llm.generate(prompt, system)
         try:
-            extracted = json.loads(extraction.text)
+            extracted = extract_json(extraction.text)
         except json.JSONDecodeError:
             logger.warning("Failed to parse symptom extraction: %s", extraction.text)
             extracted = {"symptoms": [], "needs_clarification": True}
@@ -96,9 +125,9 @@ class TriageEngine:
         # Triage
         symptoms_json = json.dumps(all_symptoms, ensure_ascii=False)
         system, prompt = PromptTemplates.triage(symptoms_json, history)
-        triage_result = await self.llm.generate(prompt, system)
+        triage_result = await self.llm.generate(prompt, system, use_cache=False)
         try:
-            triage = json.loads(triage_result.text)
+            triage = extract_json(triage_result.text)
         except json.JSONDecodeError:
             logger.warning("Failed to parse triage: %s", triage_result.text)
             triage = {"urgency": "medium", "medical_areas": [], "summary": ""}
@@ -112,22 +141,42 @@ class TriageEngine:
         system, prompt = PromptTemplates.routing(
             json.dumps(triage, ensure_ascii=False), available_str
         )
-        routing_result = await self.llm.generate(prompt, system)
+        routing_result = await self.llm.generate(prompt, system, use_cache=False)
         try:
-            routing = json.loads(routing_result.text)
+            routing = extract_json(routing_result.text)
         except json.JSONDecodeError:
             logger.warning("Failed to parse routing: %s", routing_result.text)
             routing = {"specialists": [], "explanation": ""}
 
         specialists = routing.get("specialists", [])
 
-        # Add preparation from KB
+        # Generate personalized preparation via LLM based on actual symptoms
+        triage_summary = triage.get("summary", "")
+        specialists_for_prompt = json.dumps(
+            [{"specialty": s.get("specialty", ""), "reason": s.get("reason", "")} for s in specialists],
+            ensure_ascii=False,
+        )
+        system, prompt = PromptTemplates.preparation(
+            specialists_for_prompt, symptoms_json, triage_summary
+        )
+        try:
+            prep_result = await self.llm.generate(prompt, system, use_cache=False)
+            prep_data = extract_json(prep_result.text)
+            preparations = prep_data.get("preparations", {})
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning("Failed to generate preparation, falling back to KB: %s", e)
+            preparations = {}
+
         for spec in specialists:
             spec_name = spec.get("specialty", "")
-            for key, data in self.kb.specialties.items():
-                if data["name"] == spec_name:
-                    spec["preparation"] = data.get("preparation", [])
-                    break
+            if spec_name in preparations:
+                spec["preparation"] = preparations[spec_name]
+            else:
+                # Fallback to KB static data only if LLM didn't generate
+                for key, data in self.kb.specialties.items():
+                    if data["name"] == spec_name:
+                        spec["preparation"] = data.get("preparation", [])
+                        break
 
         return {
             "triage": triage,
@@ -153,7 +202,7 @@ class TriageEngine:
         )
         result = await self.llm.generate(prompt, system, use_cache=False)
         try:
-            return json.loads(result.text)
+            return extract_json(result.text)
         except json.JSONDecodeError:
             logger.warning("Failed to parse PDF data: %s", result.text)
             return {

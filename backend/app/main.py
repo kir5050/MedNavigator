@@ -49,6 +49,14 @@ db_session_maker = None
 triage_engine = None
 
 
+@app.get("/health")
+async def health():
+    return {
+        "db_ready": db_session_maker is not None,
+        "triage_ready": triage_engine is not None,
+    }
+
+
 def build_providers() -> list[LLMProvider]:
     providers: list[LLMProvider] = []
     primary = settings.llm_primary_provider
@@ -89,19 +97,25 @@ def build_providers() -> list[LLMProvider]:
 
 @app.on_event("startup")
 async def startup():
+    import traceback
     global db_session_maker, triage_engine
 
-    engine = await get_engine(settings.database_url)
-    db_session_maker = get_session_maker(engine)
+    try:
+        engine = await get_engine(settings.database_url)
+        db_session_maker = get_session_maker(engine)
+        logger.info("Database initialized: %s", settings.database_url)
 
-    providers = build_providers()
-    llm = LLMManager(providers, settings.cache_dir)
-    kb = MedicalKB()
-    triage_engine = TriageEngine(llm, kb)
+        providers = build_providers()
+        llm = LLMManager(providers, settings.cache_dir)
+        kb = MedicalKB()
+        triage_engine = TriageEngine(llm, kb)
 
-    logger.info(
-        "Started with providers: %s", [p.name for p in providers]
-    )
+        logger.info(
+            "Started with providers: %s", [p.name for p in providers]
+        )
+    except Exception:
+        logger.error("STARTUP FAILED:\n%s", traceback.format_exc())
+        raise
 
 
 # --- Request/Response models ---
@@ -121,17 +135,28 @@ class FeedbackRequest(BaseModel):
 
 @app.post("/api/v1/session/start", status_code=201)
 async def start_session():
-    async with db_session_maker() as db:
-        session = Session()
-        db.add(session)
-        await db.commit()
-        await db.refresh(session)
+    import traceback
+    try:
+        if db_session_maker is None:
+            logger.error("db_session_maker is None — startup may have failed")
+            raise HTTPException(500, "Database not initialized")
 
-    return {
-        "session_id": session.id,
-        "message": "Здравствуйте! Я помогу вам разобраться, к какому специалисту обратиться. Расскажите, что вас беспокоит?",
-        "disclaimer": DISCLAIMER,
-    }
+        async with db_session_maker() as db:
+            session = Session()
+            db.add(session)
+            await db.commit()
+            await db.refresh(session)
+
+        return {
+            "session_id": session.id,
+            "message": "Здравствуйте! Я помогу вам разобраться, к какому специалисту обратиться. Расскажите, что вас беспокоит?",
+            "disclaimer": DISCLAIMER,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.error("start_session failed:\n%s", traceback.format_exc())
+        raise
 
 
 @app.post("/api/v1/session/{session_id}/message")
@@ -213,9 +238,11 @@ async def run_triage(session_id: str):
         # Run triage
         result = await triage_engine.run_triage(state)
 
-        # Save to state
+        # Save to state — include specialists with preparation in routing
         state["triage"] = result["triage"]
-        state["routing"] = result["routing"]
+        routing = result["routing"]
+        routing["specialists"] = result.get("specialists", routing.get("specialists", []))
+        state["routing"] = routing
         session.state_json = json.dumps(state, ensure_ascii=False)
         session.status = "completed"
 
@@ -363,23 +390,75 @@ async def download_pdf(session_id: str):
 
         state = json.loads(session.state_json)
 
-    # Generate PDF data via LLM (full state includes symptoms, triage, routing, uploaded_files)
-    pdf_data = await triage_engine.generate_pdf_data(state)
+    # LLM enrichment: medical terminology, questions, what to bring
+    llm_data = await triage_engine.generate_pdf_data(state)
 
-    # Enrich with structured data from triage
+    # Build full PDF data from session state + LLM enrichment
     routing = state.get("routing", {})
     triage = state.get("triage", {})
-    pdf_data["specialists"] = routing.get("specialists", [])
-    pdf_data["urgency"] = triage.get("urgency", "medium")
+    specialists = routing.get("specialists", [])
 
-    # Add preparation from KB for each specialist
-    for spec in pdf_data["specialists"]:
-        if isinstance(spec, dict) and not spec.get("preparation"):
-            spec_name = spec.get("specialty", "")
-            for key, kb_data in triage_engine.kb.specialties.items():
-                if kb_data["name"] == spec_name:
-                    spec["preparation"] = kb_data.get("preparation", [])
-                    break
+    # If preparation is missing (old sessions), regenerate via LLM
+    needs_preparation = any(
+        isinstance(spec, dict) and not spec.get("preparation")
+        for spec in specialists
+    )
+    if needs_preparation and specialists:
+        symptoms_json = json.dumps(state.get("symptoms", []), ensure_ascii=False)
+        triage_summary = triage.get("summary", "")
+        from app.prompts import PromptTemplates
+        specialists_for_prompt = json.dumps(
+            [{"specialty": s.get("specialty", ""), "reason": s.get("reason", "")}
+             for s in specialists if isinstance(s, dict)],
+            ensure_ascii=False,
+        )
+        system, prompt = PromptTemplates.preparation(
+            specialists_for_prompt, symptoms_json, triage_summary
+        )
+        try:
+            prep_result = await triage_engine.llm.generate(prompt, system, use_cache=False)
+            from app.services.triage_engine import extract_json as ej
+            prep_data = ej(prep_result.text)
+            preparations = prep_data.get("preparations", {})
+            for spec in specialists:
+                if isinstance(spec, dict) and not spec.get("preparation"):
+                    spec_name = spec.get("specialty", "")
+                    if spec_name in preparations:
+                        spec["preparation"] = preparations[spec_name]
+        except Exception:
+            logger.warning("PDF preparation generation failed, using KB fallback")
+            for spec in specialists:
+                if isinstance(spec, dict) and not spec.get("preparation"):
+                    spec_name = spec.get("specialty", "")
+                    for key, kb_data in triage_engine.kb.specialties.items():
+                        if kb_data["name"] == spec_name:
+                            spec["preparation"] = kb_data.get("preparation", [])
+                            break
+
+    # Detect red flags from conversation
+    red_flags = []
+    for line in state.get("history_lines", []):
+        if line.startswith("Пациент: "):
+            text = line[len("Пациент: "):]
+            flag = triage_engine.kb.check_red_flags(text)
+            if flag and flag not in red_flags:
+                red_flags.append(flag)
+
+    pdf_data = {
+        # LLM-generated enrichments
+        "complaints_medical": llm_data.get("complaints_medical", ""),
+        "complaints_simple": llm_data.get("complaints_simple", triage.get("summary", "")),
+        "questions_for_doctor": llm_data.get("questions_for_doctor", []),
+        "what_to_bring": llm_data.get("what_to_bring", []),
+        # Direct session data
+        "urgency": triage.get("urgency", "medium"),
+        "symptoms_list": state.get("symptoms", []),
+        "specialists": specialists,
+        "routing_explanation": routing.get("explanation", ""),
+        "history_lines": state.get("history_lines", []),
+        "uploaded_files": state.get("uploaded_files", []),
+        "red_flags": red_flags,
+    }
 
     pdf_bytes = PDFGenerator.generate(pdf_data, session_id)
 
