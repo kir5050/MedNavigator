@@ -217,6 +217,65 @@ body {
   30% { opacity: 1; transform: scale(1); }
 }
 
+/* Ready bar */
+.ready-bar {
+  padding: 8px 16px;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+}
+
+.btn-result {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px;
+  background: #10B981;
+  color: white;
+  border: none;
+  border-radius: var(--radius-button);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  animation: fadeIn 0.3s ease;
+}
+
+.btn-result:hover {
+  background: #059669;
+}
+
+/* Attached file */
+.attached-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: #EFF6FF;
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+  color: var(--color-primary);
+}
+
+.attached-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attached-file-remove {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+.attached-file-remove:hover {
+  color: var(--triage-emergency);
+}
+
 /* Input area */
 .input-area {
   padding: 12px 16px;
@@ -262,6 +321,29 @@ body {
 
 .send-btn:hover { background: var(--color-primary-hover); }
 .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.attach-btn {
+  width: 44px;
+  height: 48px;
+  border-radius: var(--radius-button);
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.attach-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Result screen */
 .result {

@@ -1,7 +1,9 @@
 import json
 import logging
 
-from fastapi import Depends, FastAPI, HTTPException, Header
+import base64
+
+from fastapi import Depends, FastAPI, File, HTTPException, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -106,6 +108,7 @@ async def startup():
 
 class MessageRequest(BaseModel):
     text: str
+    file_description: str | None = None
 
 class FeedbackRequest(BaseModel):
     session_id: str
@@ -180,16 +183,6 @@ async def send_message(session_id: str, req: MessageRequest):
         )
         db.add(assistant_msg)
 
-        # Save triage result if completed
-        if result["status"] == "completed" and result.get("triage"):
-            triage = TriageResult(
-                session_id=session_id,
-                urgency=result["triage"].get("urgency", "medium"),
-                specialists=result.get("specialists", []),
-                symptoms_summary=result["triage"].get("summary", ""),
-            )
-            db.add(triage)
-
         await db.commit()
 
     return {
@@ -202,6 +195,137 @@ async def send_message(session_id: str, req: MessageRequest):
         ],
         "is_emergency": result.get("is_emergency", False),
         "emergency_message": result["response"] if result.get("is_emergency") else None,
+    }
+
+
+@app.post("/api/v1/session/{session_id}/triage")
+async def run_triage(session_id: str):
+    """User explicitly requests triage result."""
+    async with db_session_maker() as db:
+        session = await db.get(Session, session_id)
+        if not session:
+            raise HTTPException(404, "Session not found")
+        if session.status in ("completed", "emergency"):
+            raise HTTPException(409, "Session already completed")
+
+        state = json.loads(session.state_json)
+
+        # Run triage
+        result = await triage_engine.run_triage(state)
+
+        # Save to state
+        state["triage"] = result["triage"]
+        state["routing"] = result["routing"]
+        session.state_json = json.dumps(state, ensure_ascii=False)
+        session.status = "completed"
+
+        # Save triage result to DB
+        triage_record = TriageResult(
+            session_id=session_id,
+            urgency=result["triage"].get("urgency", "medium"),
+            specialists=result.get("specialists", []),
+            symptoms_summary=result["triage"].get("summary", ""),
+        )
+        db.add(triage_record)
+        await db.commit()
+
+    specialists = result.get("specialists", [])
+
+    return {
+        "urgency": result["triage"].get("urgency", "medium"),
+        "specialists": specialists,
+        "symptoms_summary": result["triage"].get("summary", ""),
+        "disclaimer": DISCLAIMER,
+    }
+
+
+@app.post("/api/v1/session/{session_id}/upload")
+async def upload_file(session_id: str, file: UploadFile = File(...)):
+    async with db_session_maker() as db:
+        session = await db.get(Session, session_id)
+        if not session:
+            raise HTTPException(404, "Session not found")
+        if session.status == "expired":
+            raise HTTPException(410, "Session expired")
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(413, "File too large (max 10MB)")
+
+    filename = file.filename or "file"
+    content_type = file.content_type or ""
+
+    analysis = ""
+
+    file_analysis_system = """Ты — медицинский информационный ассистент. Пациент прислал документ.
+Извлеки медицинские данные для внутреннего использования (НЕ для показа пациенту):
+- Тип документа (анализы, снимок, заключение, рецепт)
+- Диагнозы, если указаны (код МКБ)
+- Ключевые показатели и отклонения от нормы
+- Назначения/рекомендации
+Ответь КРАТКО, списком фактов."""
+
+    # Analyze images via LLM vision
+    if content_type.startswith("image/"):
+        b64 = base64.b64encode(content).decode()
+        images = [{"media_type": content_type, "data": b64}]
+        try:
+            result = await triage_engine.llm.generate(
+                "Извлеки медицинские данные из этого изображения.",
+                file_analysis_system, images=images, use_cache=False,
+            )
+            analysis = result.text
+        except Exception as e:
+            logger.warning("Image analysis failed: %s", e)
+
+    # Analyze PDFs — extract text and send to LLM
+    elif content_type == "application/pdf" or filename.lower().endswith(".pdf"):
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=content, filetype="pdf")
+            pdf_text = ""
+            for page in doc:
+                pdf_text += page.get_text()
+            doc.close()
+
+            if pdf_text.strip():
+                result = await triage_engine.llm.generate(
+                    f"Извлеки медицинские данные из этого документа:\n\n{pdf_text[:4000]}",
+                    file_analysis_system, use_cache=False,
+                )
+                analysis = result.text
+            else:
+                analysis = "PDF без текста — возможно отсканированный документ."
+        except Exception as e:
+            logger.warning("PDF analysis failed: %s", e)
+
+    # Save to session state
+    async with db_session_maker() as db:
+        session = await db.get(Session, session_id)
+        state = json.loads(session.state_json)
+
+        # Add analysis to history
+        history_lines = state.get("history_lines", [])
+        history_lines.append(f"[Пациент загрузил файл: {filename}]")
+        if analysis:
+            history_lines.append(f"[Анализ документа: {analysis}]")
+        state["history_lines"] = history_lines
+        state["history"] = "\n".join(history_lines)
+
+        files = state.get("uploaded_files", [])
+        files.append({
+            "filename": filename,
+            "type": content_type,
+            "analysis": analysis,
+        })
+        state["uploaded_files"] = files
+        session.state_json = json.dumps(state, ensure_ascii=False)
+        await db.commit()
+
+    return {
+        "status": "ok",
+        "filename": filename,
+        "analysis": analysis,
     }
 
 
@@ -239,12 +363,23 @@ async def download_pdf(session_id: str):
 
         state = json.loads(session.state_json)
 
-    # Generate PDF data via LLM
+    # Generate PDF data via LLM (full state includes symptoms, triage, routing, uploaded_files)
     pdf_data = await triage_engine.generate_pdf_data(state)
 
-    # Enrich with structured data
-    pdf_data["specialists"] = state.get("routing", {}).get("specialists", [])
-    pdf_data["urgency"] = state.get("triage", {}).get("urgency", "medium")
+    # Enrich with structured data from triage
+    routing = state.get("routing", {})
+    triage = state.get("triage", {})
+    pdf_data["specialists"] = routing.get("specialists", [])
+    pdf_data["urgency"] = triage.get("urgency", "medium")
+
+    # Add preparation from KB for each specialist
+    for spec in pdf_data["specialists"]:
+        if isinstance(spec, dict) and not spec.get("preparation"):
+            spec_name = spec.get("specialty", "")
+            for key, kb_data in triage_engine.kb.specialties.items():
+                if kb_data["name"] == spec_name:
+                    spec["preparation"] = kb_data.get("preparation", [])
+                    break
 
     pdf_bytes = PDFGenerator.generate(pdf_data, session_id)
 

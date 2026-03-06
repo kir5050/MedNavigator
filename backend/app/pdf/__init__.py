@@ -1,3 +1,1 @@
-from app.pdf.generator import PDFGenerator
-
-__all__ = ["PDFGenerator"]
+from app.pdf.generator import PDFGenerator  # noqa: F401

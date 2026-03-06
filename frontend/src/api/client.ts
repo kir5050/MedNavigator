@@ -8,7 +8,7 @@ export interface SessionStartResponse {
 
 export interface MessageResponse {
   message: string
-  session_status: 'collecting' | 'triaging' | 'completed' | 'emergency'
+  session_status: 'collecting' | 'ready' | 'triaging' | 'completed' | 'emergency'
   disclaimer: string
   extracted_symptoms: string[]
   is_emergency: boolean
@@ -46,6 +46,12 @@ export async function sendMessage(sessionId: string, text: string): Promise<Mess
   return res.json()
 }
 
+export async function runTriage(sessionId: string): Promise<TriageResult> {
+  const res = await fetch(`${API_BASE}/api/v1/session/${sessionId}/triage`, { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to run triage')
+  return res.json()
+}
+
 export async function getResult(sessionId: string): Promise<TriageResult> {
   const res = await fetch(`${API_BASE}/api/v1/session/${sessionId}/result`)
   if (!res.ok) throw new Error('Failed to get result')
@@ -54,6 +60,23 @@ export async function getResult(sessionId: string): Promise<TriageResult> {
 
 export function getPdfUrl(sessionId: string): string {
   return `${API_BASE}/api/v1/session/${sessionId}/pdf`
+}
+
+export interface UploadResponse {
+  status: string
+  filename: string
+  analysis: string
+}
+
+export async function uploadFile(sessionId: string, file: File): Promise<UploadResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_BASE}/api/v1/session/${sessionId}/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) throw new Error('Failed to upload file')
+  return res.json()
 }
 
 export async function submitFeedback(

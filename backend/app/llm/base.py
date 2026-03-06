@@ -15,7 +15,8 @@ class LLMProvider(ABC):
 
     @abstractmethod
     async def generate(
-        self, prompt: str, system: str, temperature: float = 0.3
+        self, prompt: str, system: str, temperature: float = 0.3,
+        images: list[dict] | None = None,
     ) -> LLMResponse:
         ...
 

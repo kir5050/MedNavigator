@@ -1,4 +1,3 @@
-import io
 from datetime import datetime, timezone
 
 from weasyprint import HTML
@@ -165,5 +164,4 @@ class PDFGenerator:
 </body>
 </html>"""
 
-        pdf_bytes = HTML(string=html_content).write_pdf()
-        return pdf_bytes
+        return HTML(string=html_content).write_pdf()

@@ -48,8 +48,17 @@ class TriageEngine:
 
         # 3. Decide: clarify or triage
         needs_clarification = extracted.get("needs_clarification", False)
+        has_enough_symptoms = len(all_symptoms) >= 2
+        min_messages_reached = clarification_count >= 1
 
-        if needs_clarification and clarification_count < self.MAX_CLARIFICATIONS:
+        # Always clarify if: not enough symptoms, or LLM says so, or not enough conversation
+        should_clarify = (
+            (not has_enough_symptoms)
+            or needs_clarification
+            or (not min_messages_reached)
+        )
+
+        if should_clarify and clarification_count < self.MAX_CLARIFICATIONS:
             system, prompt = PromptTemplates.clarification(
                 json.dumps(all_symptoms, ensure_ascii=False), history
             )
@@ -63,7 +72,28 @@ class TriageEngine:
                 "clarification_count": clarification_count + 1,
             }
 
-        # 4. Triage
+        # 4. Enough info collected — signal "ready" so user can trigger triage
+        return {
+            "response": "Достаточно информации. Вы можете получить рекомендацию или продолжить описывать симптомы.",
+            "status": "ready",
+            "is_emergency": False,
+            "symptoms": all_symptoms,
+            "kb_matches": kb_matches,
+            "clarification_count": clarification_count,
+        }
+
+    async def run_triage(self, session_state: dict) -> dict:
+        """Run triage + routing. Called when user explicitly requests result."""
+        all_symptoms = session_state.get("symptoms", [])
+        history = session_state.get("history", "")
+
+        # KB matches from all collected symptoms
+        kb_matches = []
+        for s in all_symptoms:
+            name = s.get("name", "") if isinstance(s, dict) else str(s)
+            kb_matches.extend(self.kb.match_symptoms(name))
+
+        # Triage
         symptoms_json = json.dumps(all_symptoms, ensure_ascii=False)
         system, prompt = PromptTemplates.triage(symptoms_json, history)
         triage_result = await self.llm.generate(prompt, system)
@@ -73,7 +103,7 @@ class TriageEngine:
             logger.warning("Failed to parse triage: %s", triage_result.text)
             triage = {"urgency": "medium", "medical_areas": [], "summary": ""}
 
-        # 5. Routing
+        # Routing
         available = self.kb.get_specialties_for_symptoms(kb_matches or [s.get("name", "") for s in all_symptoms])
         available_str = json.dumps(
             [{"name": s["name"], "description": s["description"]} for s in available],
@@ -89,8 +119,6 @@ class TriageEngine:
             logger.warning("Failed to parse routing: %s", routing_result.text)
             routing = {"specialists": [], "explanation": ""}
 
-        # Build response
-        explanation = routing.get("explanation", "")
         specialists = routing.get("specialists", [])
 
         # Add preparation from KB
@@ -102,10 +130,6 @@ class TriageEngine:
                     break
 
         return {
-            "response": explanation,
-            "status": "completed",
-            "is_emergency": False,
-            "symptoms": all_symptoms,
             "triage": triage,
             "routing": routing,
             "specialists": specialists,
@@ -116,10 +140,18 @@ class TriageEngine:
         triage_json = json.dumps(session_state.get("triage", {}), ensure_ascii=False)
         routing_json = json.dumps(session_state.get("routing", {}), ensure_ascii=False)
 
+        # Include uploaded file analyses for richer PDF
+        uploaded_files = session_state.get("uploaded_files", [])
+        files_summary = ""
+        if uploaded_files:
+            analyses = [f.get("analysis", "") for f in uploaded_files if f.get("analysis")]
+            if analyses:
+                files_summary = "\n".join(analyses)
+
         system, prompt = PromptTemplates.pdf_summary(
-            symptoms_json, triage_json, routing_json
+            symptoms_json, triage_json, routing_json, files_summary
         )
-        result = await self.llm.generate(prompt, system)
+        result = await self.llm.generate(prompt, system, use_cache=False)
         try:
             return json.loads(result.text)
         except json.JSONDecodeError:

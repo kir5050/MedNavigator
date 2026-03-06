@@ -15,7 +15,7 @@ class Session(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     status: Mapped[str] = mapped_column(
-        Enum("collecting", "triaging", "completed", "emergency", "expired", name="session_status"),
+        Enum("collecting", "ready", "triaging", "completed", "emergency", "expired", name="session_status"),
         default="collecting",
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

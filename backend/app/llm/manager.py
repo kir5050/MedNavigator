@@ -24,7 +24,12 @@ class LLMManager:
         temperature: float = 0.3,
         use_cache: bool = True,
         cache_ttl: int = 86400,
+        images: list[dict] | None = None,
     ) -> LLMResponse:
+        # Don't cache image requests
+        if images:
+            use_cache = False
+
         if use_cache:
             key = self._cache_key(prompt, system)
             cached = self.cache.get(key)
@@ -38,7 +43,7 @@ class LLMManager:
         for provider in self.providers:
             try:
                 logger.info("Trying provider: %s", provider.name)
-                response = await provider.generate(prompt, system, temperature)
+                response = await provider.generate(prompt, system, temperature, images=images)
                 if use_cache:
                     self.cache.set(key, response.text, expire=cache_ttl)
                 return response
