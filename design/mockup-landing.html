@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedNavigator — Mockup лендинга</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ============================================
+       MOCKUP ONLY — NOT PRODUCTION CODE
+       MedNavigator Landing Page Design Preview
+       Desktop + Mobile responsive
+       ============================================ */
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primary: #4F6BFF;
+      --primary-dark: #3A53E0;
+      --primary-light: #EEF1FF;
+      --text: #1A1F36;
+      --text-secondary: #5E6478;
+      --text-muted: #8F95A8;
+      --bg: #FFFFFF;
+      --bg-alt: #F7F8FC;
+      --border: #E4E7F1;
+      --green: #10B981;
+      --green-bg: #ECFDF5;
+      --red: #EF4444;
+      --red-bg: #FEF2F2;
+      --orange: #F59E0B;
+      --orange-bg: #FFFBEB;
+      --purple: #8B5CF6;
+      --purple-bg: #F5F3FF;
+      --yellow: #EAB308;
+      --yellow-bg: #FEFCE8;
+      --gray: #6B7280;
+      --gray-bg: #F3F4F6;
+      --radius: 16px;
+      --radius-sm: 12px;
+      --radius-xs: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+      --shadow-lg: 0 12px 32px rgba(0,0,0,0.12);
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+
+    /* ==========================================
+       MOCKUP FRAME INDICATOR
+       ========================================== */
+    .mockup-badge {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      background: #1A1F36;
+      color: white;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 1000;
+      letter-spacing: 0.5px;
+    }
+
+    /* ==========================================
+       1. STICKY HEADER
+       ========================================== */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      height: 64px;
+      display: flex;
+      align-items: center;
+    }
+
+    .header .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--primary);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg { display: block; }
+
+    .logo-text {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .logo-text span { color: var(--primary); }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .header-nav a {
+      text-decoration: none;
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .header-nav a:hover { color: var(--primary); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      padding: 10px 24px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      box-shadow: 0 2px 8px rgba(79,107,255,0.3);
+    }
+
+    .btn-primary:hover { background: var(--primary-dark); }
+
+    .btn-large {
+      padding: 16px 40px;
+      font-size: 17px;
+      border-radius: var(--radius-sm);
+      box-shadow: 0 4px 16px rgba(79,107,255,0.35);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--primary);
+      padding: 10px 24px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      border: 2px solid var(--primary);
+    }
+
+    .btn-outline:hover {
+      background: var(--primary);
+      color: white;
+    }
+
+    /* ==========================================
+       2. HERO
+       ========================================== */
+    .hero {
+      padding: 80px 0 100px;
+      background: linear-gradient(180deg, var(--primary-light) 0%, var(--bg) 100%);
+      overflow: hidden;
+    }
+
+    .hero .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+
+    .hero-content { max-width: 520px; }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: white;
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .hero-badge-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+    }
+
+    .hero h1 {
+      font-size: 44px;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.5px;
+      margin-bottom: 20px;
+      color: var(--text);
+    }
+
+    .hero h1 em {
+      font-style: normal;
+      color: var(--primary);
+    }
+
+    .hero-sub {
+      font-size: 18px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 36px;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .hero-note {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Chat mockup */
+    .hero-visual {
+      position: relative;
+    }
+
+    .chat-mockup {
+      background: white;
+      border-radius: 20px;
+      box-shadow: var(--shadow-lg);
+      padding: 0;
+      overflow: hidden;
+      max-width: 380px;
+      margin-left: auto;
+    }
+
+    .chat-header {
+      background: var(--primary);
+      color: white;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .chat-header-avatar {
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .chat-header-info h4 {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .chat-header-info p {
+      font-size: 11px;
+      opacity: 0.8;
+    }
+
+    .chat-body {
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 300px;
+    }
+
+    .chat-msg {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .chat-msg-bot {
+      background: var(--bg-alt);
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+      align-self: flex-start;
+    }
+
+    .chat-msg-user {
+      background: var(--primary);
+      color: white;
+      border-bottom-right-radius: 4px;
+      align-self: flex-end;
+    }
+
+    .chat-msg-result {
+      background: var(--green-bg);
+      border: 1px solid #A7F3D0;
+      border-radius: 14px;
+      padding: 14px;
+      align-self: flex-start;
+      max-width: 90%;
+    }
+
+    .chat-msg-result .result-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--green);
+      margin-bottom: 6px;
+    }
+
+    .chat-msg-result .result-text {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .chat-input-mock {
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chat-input-field {
+      flex: 1;
+      background: var(--bg-alt);
+      border-radius: 20px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .chat-send-btn {
+      width: 36px;
+      height: 36px;
+      background: var(--primary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ==========================================
+       3. PROBLEM
+       ========================================== */
+    .problem {
+      padding: 80px 0;
+      background: var(--bg);
+    }
+
+    .section-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--primary);
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 36px;
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: -0.3px;
+      margin-bottom: 16px;
+    }
+
+    .section-desc {
+      font-size: 17px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      max-width: 640px;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .section-header .section-desc {
+      margin: 0 auto;
+    }
+
+    .problem-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 48px;
+    }
+
+    .problem-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      text-align: center;
+    }
+
+    .problem-card-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 24px;
+    }
+
+    .problem-card h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .problem-card p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* ==========================================
+       4. HOW IT WORKS
+       ========================================== */
+    .how {
+      padding: 80px 0;
+      background: var(--bg-alt);
+    }
+
+    .how-steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
+      margin-top: 48px;
+      position: relative;
+    }
+
+    .how-step {
+      text-align: center;
+      position: relative;
+    }
+
+    .how-step-num {
+      width: 48px;
+      height: 48px;
+      background: var(--primary);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 auto 16px;
+    }
+
+    .how-step h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .how-step p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* connector line */
+    .how-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 24px;
+      right: -16px;
+      width: 32px;
+      height: 2px;
+      background: var(--border);
+    }
+
+    /* ==========================================
+       5. TRIAGE LEVELS
+       ========================================== */
+    .triage {
+      padding: 80px 0;
+      background: var(--bg);
+    }
+
+    .triage-cards {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-top: 48px;
+    }
+
+    .triage-card {
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      text-align: center;
+      border: 2px solid transparent;
+      transition: transform 0.2s;
+    }
+
+    .triage-card:hover { transform: translateY(-4px); }
+
+    .triage-card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 12px;
+      font-size: 22px;
+    }
+
+    .triage-card h3 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .triage-card p {
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    /* Emergency */
+    .triage-emergency { background: var(--red-bg); border-color: #FCA5A5; }
+    .triage-emergency .triage-card-icon { background: var(--red); color: white; }
+    .triage-emergency h3 { color: var(--red); }
+    .triage-emergency p { color: #991B1B; }
+
+    /* Urgent */
+    .triage-urgent { background: var(--orange-bg); border-color: #FCD34D; }
+    .triage-urgent .triage-card-icon { background: var(--orange); color: white; }
+    .triage-urgent h3 { color: #B45309; }
+    .triage-urgent p { color: #92400E; }
+
+    /* Soon */
+    .triage-soon { background: var(--yellow-bg); border-color: #FDE68A; }
+    .triage-soon .triage-card-icon { background: var(--yellow); color: white; }
+    .triage-soon h3 { color: #A16207; }
+    .triage-soon p { color: #854D0E; }
+
+    /* Routine */
+    .triage-routine { background: var(--green-bg); border-color: #A7F3D0; }
+    .triage-routine .triage-card-icon { background: var(--green); color: white; }
+    .triage-routine h3 { color: #047857; }
+    .triage-routine p { color: #065F46; }
+
+    /* Self-care */
+    .triage-selfcare { background: var(--gray-bg); border-color: #D1D5DB; }
+    .triage-selfcare .triage-card-icon { background: var(--gray); color: white; }
+    .triage-selfcare h3 { color: #374151; }
+    .triage-selfcare p { color: #4B5563; }
+
+    /* ==========================================
+       6. FOR WHOM
+       ========================================== */
+    .audience {
+      padding: 80px 0;
+      background: var(--bg-alt);
+    }
+
+    .audience-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 48px;
+    }
+
+    .audience-card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .audience-card-emoji {
+      font-size: 36px;
+      margin-bottom: 16px;
+    }
+
+    .audience-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .audience-card p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* ==========================================
+       7. DOES / DOESN'T
+       ========================================== */
+    .comparison {
+      padding: 80px 0;
+      background: var(--bg);
+    }
+
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-top: 48px;
+    }
+
+    .comparison-col {
+      border-radius: var(--radius);
+      padding: 32px 28px;
+    }
+
+    .comparison-does {
+      background: var(--green-bg);
+      border: 2px solid #A7F3D0;
+    }
+
+    .comparison-doesnt {
+      background: var(--red-bg);
+      border: 2px solid #FCA5A5;
+    }
+
+    .comparison-col h3 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .comparison-does h3 { color: #047857; }
+    .comparison-doesnt h3 { color: #B91C1C; }
+
+    .comparison-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .comparison-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .comparison-does .comparison-list li { color: #065F46; }
+    .comparison-doesnt .comparison-list li { color: #991B1B; }
+
+    .comparison-icon {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+
+    .comparison-does .comparison-icon { background: var(--green); color: white; }
+    .comparison-doesnt .comparison-icon { background: var(--red); color: white; }
+
+    /* ==========================================
+       8. FAQ
+       ========================================== */
+    .faq {
+      padding: 80px 0;
+      background: var(--bg-alt);
+    }
+
+    .faq-list {
+      max-width: 720px;
+      margin: 48px auto 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .faq-item {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .faq-item summary {
+      padding: 18px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .faq-item summary::-webkit-details-marker { display: none; }
+
+    .faq-item summary::after {
+      content: '+';
+      font-size: 22px;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+      flex-shrink: 0;
+      margin-left: 16px;
+    }
+
+    .faq-item[open] summary::after { transform: rotate(45deg); }
+
+    .faq-item p {
+      padding: 0 24px 18px;
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    /* ==========================================
+       9. FINAL CTA
+       ========================================== */
+    .cta {
+      padding: 80px 0;
+      background: var(--primary);
+      text-align: center;
+      color: white;
+    }
+
+    .cta h2 {
+      font-size: 36px;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 16px;
+    }
+
+    .cta p {
+      font-size: 18px;
+      opacity: 0.85;
+      margin-bottom: 36px;
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .btn-white {
+      background: white;
+      color: var(--primary);
+      padding: 16px 40px;
+      border-radius: var(--radius-sm);
+      font-size: 17px;
+      font-weight: 700;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+
+    .btn-white:hover { background: #F0F0F0; }
+
+    .cta-note {
+      margin-top: 16px;
+      font-size: 13px;
+      opacity: 0.7;
+    }
+
+    /* ==========================================
+       10. FOOTER
+       ========================================== */
+    .footer {
+      padding: 40px 0;
+      background: #1A1F36;
+      color: white;
+    }
+
+    .footer .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .footer-disclaimer {
+      font-size: 12px;
+      color: #8F95A8;
+      text-align: center;
+      max-width: 600px;
+      line-height: 1.6;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .footer-links a {
+      color: #8F95A8;
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    .footer-links a:hover { color: white; }
+
+    .footer-copy {
+      font-size: 13px;
+      color: #5E6478;
+    }
+
+    /* ==========================================
+       MOBILE (max-width: 768px)
+       ========================================== */
+    @media (max-width: 768px) {
+      .container { padding: 0 20px; }
+
+      .header-nav a:not(.btn) { display: none; }
+
+      .hero { padding: 48px 0 60px; }
+      .hero .container {
+        grid-template-columns: 1fr;
+        gap: 40px;
+        text-align: center;
+      }
+      .hero-content { max-width: 100%; }
+      .hero h1 { font-size: 30px; }
+      .hero-sub { font-size: 16px; }
+      .hero-actions { justify-content: center; flex-wrap: wrap; }
+      .hero-note { text-align: center; }
+      .chat-mockup { margin: 0 auto; max-width: 340px; }
+      .chat-body { min-height: 220px; }
+
+      .section-title { font-size: 28px; }
+      .section-desc { font-size: 15px; }
+
+      .problem-grid { grid-template-columns: 1fr; gap: 16px; }
+      .problem-card { text-align: left; display: flex; gap: 16px; align-items: flex-start; }
+      .problem-card-icon { margin: 0; flex-shrink: 0; }
+
+      .how-steps { grid-template-columns: 1fr 1fr; }
+      .how-step::after { display: none; }
+
+      .triage-cards {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .triage-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        text-align: left;
+        padding: 16px 20px;
+      }
+      .triage-card-icon { margin: 0; flex-shrink: 0; }
+
+      .audience-grid { grid-template-columns: 1fr; }
+
+      .comparison-grid { grid-template-columns: 1fr; }
+
+      .cta h2 { font-size: 28px; }
+      .cta p { font-size: 16px; }
+
+      .footer-links { flex-wrap: wrap; justify-content: center; }
+    }
+
+    /* ==========================================
+       TABLET (max-width: 1024px, min-width: 769px)
+       ========================================== */
+    @media (max-width: 1024px) and (min-width: 769px) {
+      .hero h1 { font-size: 36px; }
+      .triage-cards { grid-template-columns: repeat(3, 1fr); }
+      .how-steps { grid-template-columns: repeat(2, 1fr); }
+      .how-step::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="mockup-badge">MOCKUP — не production</div>
+
+<!-- ==========================================
+     1. STICKY HEADER
+     ========================================== -->
+<header class="header">
+  <div class="container">
+    <a href="#hero" class="logo">
+      <div class="logo-icon">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M10 2L3 7v6l7 5 7-5V7l-7-5z" stroke="white" stroke-width="1.8" stroke-linejoin="round"/>
+          <circle cx="10" cy="10" r="3" stroke="white" stroke-width="1.8"/>
+        </svg>
+      </div>
+      <div class="logo-text">Med<span>Navigator</span></div>
+    </a>
+    <nav class="header-nav">
+      <a href="#how">Как работает</a>
+      <a href="#faq">FAQ</a>
+      <a href="#cta" class="btn btn-primary">Проверить симптомы</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ==========================================
+     2. HERO
+     ========================================== -->
+<section class="hero" id="hero">
+  <div class="container">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <div class="hero-badge-dot"></div>
+        Бесплатный AI-сервис
+      </div>
+      <h1>Не знаете, к какому <em>врачу</em> обратиться?</h1>
+      <p class="hero-sub">Опишите симптомы — мы подскажем нужного специалиста, оценим срочность и подготовим выписку для визита</p>
+      <div class="hero-actions">
+        <a href="https://kir5050-mednavigator-b593.twc1.net" class="btn btn-primary btn-large">Проверить симптомы</a>
+      </div>
+      <p class="hero-note">Без регистрации. Без сбора персональных данных.</p>
+    </div>
+
+    <div class="hero-visual">
+      <div class="chat-mockup">
+        <div class="chat-header">
+          <div class="chat-header-avatar">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 2L3 7v6l7 5 7-5V7l-7-5z" stroke="white" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="3" stroke="white" stroke-width="1.5"/></svg>
+          </div>
+          <div class="chat-header-info">
+            <h4>MedNavigator</h4>
+            <p>AI-навигатор</p>
+          </div>
+        </div>
+        <div class="chat-body">
+          <div class="chat-msg chat-msg-bot">Здравствуйте! Опишите, что вас беспокоит.</div>
+          <div class="chat-msg chat-msg-user">Болит горло и температура 38.2 второй день</div>
+          <div class="chat-msg chat-msg-bot">Есть ли насморк или кашель?</div>
+          <div class="chat-msg chat-msg-user">Да, небольшой кашель</div>
+          <div class="chat-msg-result">
+            <div class="result-label">Рекомендация</div>
+            <div class="result-text">
+              <strong>Терапевт</strong> — в ближайшие 1–2 дня<br/>
+              Срочность: плановый визит<br/>
+              <span style="color:var(--primary);font-weight:600;">Скачать PDF-выписку →</span>
+            </div>
+          </div>
+        </div>
+        <div class="chat-input-mock">
+          <div class="chat-input-field">Опишите симптомы...</div>
+          <div class="chat-send-btn">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2L7 9M14 2L10 14L7 9M14 2L2 6L7 9" stroke="white" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     3. PROBLEM
+     ========================================== -->
+<section class="problem">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-label">Проблема</div>
+      <h2 class="section-title">Почему сложно попасть к нужному врачу</h2>
+      <p class="section-desc">Пациенты теряют время и деньги из-за неправильной маршрутизации. MedNavigator решает эту проблему.</p>
+    </div>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <div class="problem-card-icon" style="background:var(--red-bg);">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="10" stroke="#EF4444" stroke-width="2"/><path d="M14 9v6M14 18v1" stroke="#EF4444" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <h3>Не тот специалист</h3>
+          <p>45% пациентов обращаются не к тому врачу и вынуждены получать перенаправление</p>
+        </div>
+      </div>
+      <div class="problem-card">
+        <div class="problem-card-icon" style="background:var(--orange-bg);">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="10" stroke="#F59E0B" stroke-width="2"/><path d="M14 9v5l4 2" stroke="#F59E0B" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <h3>Потеря времени</h3>
+          <p>Среднее ожидание приёма терапевта — 5 дней. При неверном направлении — ещё столько же</p>
+        </div>
+      </div>
+      <div class="problem-card">
+        <div class="problem-card-icon" style="background:var(--purple-bg);">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="6" y="4" width="16" height="20" rx="2" stroke="#8B5CF6" stroke-width="2"/><path d="M10 10h8M10 14h8M10 18h4" stroke="#8B5CF6" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <h3>Нет подготовки</h3>
+          <p>Пациент приходит к врачу без нужных анализов и не может чётко описать жалобы</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     4. HOW IT WORKS
+     ========================================== -->
+<section class="how" id="how">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-label">Как это работает</div>
+      <h2 class="section-title">4 шага до нужного врача</h2>
+      <p class="section-desc">Занимает 2–3 минуты. Без регистрации.</p>
+    </div>
+    <div class="how-steps">
+      <div class="how-step">
+        <div class="how-step-num">1</div>
+        <h3>Опишите симптомы</h3>
+        <p>Расскажите своими словами, что вас беспокоит</p>
+      </div>
+      <div class="how-step">
+        <div class="how-step-num">2</div>
+        <h3>Ответьте на вопросы</h3>
+        <p>AI задаст 1–3 уточняющих вопроса для точности</p>
+      </div>
+      <div class="how-step">
+        <div class="how-step-num">3</div>
+        <h3>Получите рекомендацию</h3>
+        <p>Узнайте специалиста, срочность и чеклист подготовки</p>
+      </div>
+      <div class="how-step">
+        <div class="how-step-num">4</div>
+        <h3>Скачайте выписку</h3>
+        <p>PDF для врача с описанием жалоб и вопросами</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     5. 5 URGENCY LEVELS
+     ========================================== -->
+<section class="triage" id="triage">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-label">Оценка срочности</div>
+      <h2 class="section-title">5 уровней срочности</h2>
+      <p class="section-desc">Система оценивает, насколько быстро нужно обратиться к врачу, и рекомендует действия</p>
+    </div>
+    <div class="triage-cards">
+      <div class="triage-card triage-emergency">
+        <div class="triage-card-icon">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 2l2 6h6l-5 4 2 6-5-4-5 4 2-6-5-4h6l2-6z" fill="white"/></svg>
+        </div>
+        <div>
+          <h3>Экстренная</h3>
+          <p>Вызов скорой 103/112 немедленно</p>
+        </div>
+      </div>
+      <div class="triage-card triage-urgent">
+        <div class="triage-card-icon">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 4v8M11 15v2" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <h3>Срочная</h3>
+          <p>К врачу сегодня или вызов на дом</p>
+        </div>
+      </div>
+      <div class="triage-card triage-soon">
+        <div class="triage-card-icon">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="7" stroke="white" stroke-width="2"/><path d="M11 7v4l3 2" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <h3>В ближайшие дни</h3>
+          <p>Запись к специалисту в течение 1–3 дней</p>
+        </div>
+      </div>
+      <div class="triage-card triage-routine">
+        <div class="triage-card-icon">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M6 11l4 4 6-8" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <h3>Плановый</h3>
+          <p>Запись в удобное время в течение недели</p>
+        </div>
+      </div>
+      <div class="triage-card triage-selfcare">
+        <div class="triage-card-icon">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 3C7 3 4 6.5 4 10c0 5 7 9 7 9s7-4 7-9c0-3.5-3-7-7-7z" stroke="white" stroke-width="2"/></svg>
+        </div>
+        <div>
+          <h3>Самопомощь</h3>
+          <p>Рекомендации по уходу, наблюдение</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     6. FOR WHOM
+     ========================================== -->
+<section class="audience">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-label">Для кого</div>
+      <h2 class="section-title">Кому поможет MedNavigator</h2>
+    </div>
+    <div class="audience-grid">
+      <div class="audience-card">
+        <div class="audience-card-emoji">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="12" fill="var(--primary-light)"/><path d="M20 13c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zM13 27c0-3 4.5-4.5 7-4.5s7 1.5 7 4.5" stroke="var(--primary)" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <h3>Пациенты</h3>
+        <p>Не знаете, к какому врачу записаться? Опишите симптомы и получите направление за 2 минуты.</p>
+      </div>
+      <div class="audience-card">
+        <div class="audience-card-emoji">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="12" fill="var(--green-bg)"/><path d="M15 13c-2.2 0-4 1.8-4 4s1.8 4 4 4M25 13c2.2 0 4 1.8 4 4s-1.8 4-4 4M11 27c0-2.5 3-4 4-4h2M23 23h2c1 0 4 1.5 4 4" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/><circle cx="20" cy="15" r="4" stroke="var(--green)" stroke-width="2"/><path d="M14 29c0-3 4-4.5 6-4.5s6 1.5 6 4.5" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <h3>Родители</h3>
+        <p>У ребёнка температура ночью? Узнайте, нужна ли скорая или можно дождаться утра.</p>
+      </div>
+      <div class="audience-card">
+        <div class="audience-card-emoji">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="12" fill="var(--purple-bg)"/><rect x="12" y="10" width="16" height="20" rx="2" stroke="var(--purple)" stroke-width="2"/><path d="M16 16h8M16 20h8M16 24h4" stroke="var(--purple)" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <h3>Клиники и страховые</h3>
+        <p>Снижайте нагрузку на колл-центр и повышайте точность маршрутизации пациентов.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     7. DOES / DOESN'T
+     ========================================== -->
+<section class="comparison">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-label">Важно понимать</div>
+      <h2 class="section-title">Что делает и чего не делает сервис</h2>
+    </div>
+    <div class="comparison-grid">
+      <div class="comparison-col comparison-does">
+        <h3>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--green)"/><path d="M8 12l3 3 5-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          MedNavigator делает
+        </h3>
+        <ul class="comparison-list">
+          <li><span class="comparison-icon">✓</span> Помогает определить нужного специалиста</li>
+          <li><span class="comparison-icon">✓</span> Оценивает уровень срочности обращения</li>
+          <li><span class="comparison-icon">✓</span> Готовит чек-лист подготовки к визиту</li>
+          <li><span class="comparison-icon">✓</span> Формирует PDF-выписку для врача</li>
+          <li><span class="comparison-icon">✓</span> При red flags направляет на скорую</li>
+        </ul>
+      </div>
+      <div class="comparison-col comparison-doesnt">
+        <h3>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--red)"/><path d="M8 8l8 8M16 8l-8 8" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+          MedNavigator не делает
+        </h3>
+        <ul class="comparison-list">
+          <li><span class="comparison-icon">✗</span> Не ставит диагнозы</li>
+          <li><span class="comparison-icon">✗</span> Не назначает лечение и лекарства</li>
+          <li><span class="comparison-icon">✗</span> Не заменяет визит к врачу</li>
+          <li><span class="comparison-icon">✗</span> Не хранит персональные данные</li>
+          <li><span class="comparison-icon">✗</span> Не является медицинским изделием</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     8. FAQ
+     ========================================== -->
+<section class="faq" id="faq">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-label">Вопросы</div>
+      <h2 class="section-title">Частые вопросы</h2>
+    </div>
+    <div class="faq-list">
+      <details class="faq-item">
+        <summary>Это заменяет поход к врачу?</summary>
+        <p>Нет. MedNavigator — информационный сервис навигации. Он помогает определить направление и подготовиться, но не ставит диагнозы и не назначает лечение. Визит к врачу обязателен.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Мои данные сохраняются?</summary>
+        <p>Мы не собираем персональные данные. Сессия анонимна и автоматически удаляется. Регистрация не требуется.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Насколько точны рекомендации?</summary>
+        <p>Система основана на медицинской базе знаний и AI. При сомнениях всегда рекомендуется более высокий уровень срочности для вашей безопасности.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Что делать в экстренной ситуации?</summary>
+        <p>При экстренных симптомах (боль в груди, потеря сознания, сильное кровотечение) система немедленно рекомендует вызвать скорую: 103 или 112.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Сервис бесплатный?</summary>
+        <p>Да, для пациентов сервис полностью бесплатный и не требует регистрации.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Как формируется PDF-выписка?</summary>
+        <p>На основе вашего диалога AI формирует структурированный документ: описание жалоб, хронология, чеклист подготовки к визиту и вопросы для врача.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     9. FINAL CTA
+     ========================================== -->
+<section class="cta" id="cta">
+  <div class="container">
+    <h2>Узнайте, к какому врачу обратиться</h2>
+    <p>Опишите симптомы — получите рекомендацию за 2 минуты. Бесплатно и анонимно.</p>
+    <a href="https://kir5050-mednavigator-b593.twc1.net" class="btn btn-white">Проверить симптомы</a>
+    <p class="cta-note">Информация носит справочный характер и не заменяет консультацию врача</p>
+  </div>
+</section>
+
+<!-- ==========================================
+     10. FOOTER
+     ========================================== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-links">
+      <a href="#hero">О сервисе</a>
+      <a href="#">Политика конфиденциальности</a>
+      <a href="#">Для клиник</a>
+      <a href="#">Контакты</a>
+    </div>
+    <p class="footer-disclaimer">
+      MedNavigator — информационный сервис. Не является медицинским изделием.
+      Не ставит диагнозы и не назначает лечение.
+      Информация носит справочный характер и не заменяет консультацию врача.
+    </p>
+    <p class="footer-copy">&copy; 2026 MedNavigator</p>
+  </div>
+</footer>
+
+</body>
+</html>
