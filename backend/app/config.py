@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # Auth
     admin_token: str = "change-me-in-production"
 
+    # Telegram alerts
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
     # Session
     session_ttl_hours: int = 24
 

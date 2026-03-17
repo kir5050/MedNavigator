@@ -1,11 +1,13 @@
 import json
 import logging
+import traceback as tb_module
 
 import base64
+import httpx
 
-from fastapi import Depends, FastAPI, File, HTTPException, Header, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Header, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
@@ -43,6 +45,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Telegram error alerts ---
+
+async def send_telegram_alert(text: str):
+    token = settings.telegram_bot_token
+    chat_id = settings.telegram_chat_id
+    if not token or not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(url, json=payload)
+    except Exception:
+        logger.warning("Failed to send Telegram alert")
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    trace = tb_module.format_exc()
+    logger.error("Unhandled error: %s\n%s", exc, trace)
+    alert = (
+        f"<b>MedNavigator ERROR</b>\n"
+        f"<b>URL:</b> {request.method} {request.url.path}\n"
+        f"<b>Error:</b> {type(exc).__name__}: {str(exc)[:200]}\n"
+        f"<pre>{trace[-500:]}</pre>"
+    )
+    await send_telegram_alert(alert)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
 
 # Global state
 db_session_maker = None
@@ -97,7 +130,6 @@ def build_providers() -> list[LLMProvider]:
 
 @app.on_event("startup")
 async def startup():
-    import traceback
     global db_session_maker, triage_engine
 
     try:
@@ -110,11 +142,17 @@ async def startup():
         kb = MedicalKB()
         triage_engine = TriageEngine(llm, kb)
 
-        logger.info(
-            "Started with providers: %s", [p.name for p in providers]
+        provider_names = [p.name for p in providers]
+        logger.info("Started with providers: %s", provider_names)
+        await send_telegram_alert(
+            f"<b>MedNavigator STARTED</b>\nProviders: {', '.join(provider_names)}"
         )
     except Exception:
-        logger.error("STARTUP FAILED:\n%s", traceback.format_exc())
+        trace = tb_module.format_exc()
+        logger.error("STARTUP FAILED:\n%s", trace)
+        await send_telegram_alert(
+            f"<b>MedNavigator STARTUP FAILED</b>\n<pre>{trace[-500:]}</pre>"
+        )
         raise
 
 
@@ -135,7 +173,6 @@ class FeedbackRequest(BaseModel):
 
 @app.post("/api/v1/session/start", status_code=201)
 async def start_session():
-    import traceback
     try:
         if db_session_maker is None:
             logger.error("db_session_maker is None — startup may have failed")
