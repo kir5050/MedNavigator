@@ -6,7 +6,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8080:8080"
     volumes:
       - ./backend:/app
       - sqlite-data:/app/data
@@ -28,7 +28,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://localhost:8080
     depends_on:
       - backend
     restart: unless-stopped
