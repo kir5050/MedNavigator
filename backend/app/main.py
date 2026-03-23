@@ -192,7 +192,7 @@ async def start_session():
     except HTTPException:
         raise
     except Exception:
-        logger.error("start_session failed:\n%s", traceback.format_exc())
+        logger.error("start_session failed:\n%s", tb_module.format_exc())
         raise
 
 
