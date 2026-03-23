@@ -441,7 +441,8 @@ async def get_result(session_id: str):
 
 
 @app.get("/api/v1/session/{session_id}/pdf")
-async def download_pdf(session_id: str):
+@limiter.limit("5/minute")
+async def download_pdf(request: Request, session_id: str):
     async with db_session_maker() as db:
         session = await db.get(Session, session_id)
         if not session:
