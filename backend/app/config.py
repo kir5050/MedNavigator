@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     gigachat_client_id: str = ""
     gigachat_client_secret: str = ""
 
+    # CORS
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+
     # App
     app_env: str = "development"
     log_level: str = "info"
