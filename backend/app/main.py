@@ -38,6 +38,7 @@ logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
 logger = logging.getLogger(__name__)
 
 DISCLAIMER = "Информация носит справочный характер и не заменяет консультацию врача."
+MAX_SESSION_MESSAGES = 30
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="MedNavigator API", version="0.1.0")
@@ -226,6 +227,11 @@ async def send_message(request: Request, session_id: str, req: MessageRequest):
             raise HTTPException(404, "Session not found")
         if session.status == "expired":
             raise HTTPException(410, "Session expired")
+        if session.message_count >= MAX_SESSION_MESSAGES:
+            raise HTTPException(
+                status_code=409,
+                detail="Достигнут лимит сообщений в сессии (30). Пожалуйста, нажмите «Получить рекомендацию» для завершения консультации."
+            )
 
         # Save user message
         user_msg = Message(session_id=session_id, role="user", text=req.text)
