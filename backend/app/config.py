@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     gigachat_client_secret: str = ""
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173", "https://app.navimedic.ru", "https://navimedic.ru"]
 
     # App
     app_env: str = "development"
