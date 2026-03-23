@@ -8,7 +8,7 @@ import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Header, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -171,13 +171,21 @@ async def startup():
 # --- Request/Response models ---
 
 class MessageRequest(BaseModel):
-    text: str
+    text: str = Field(..., max_length=5000)
     file_description: str | None = None
+
+    @field_validator("text")
+    @classmethod
+    def text_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Текст сообщения не может быть пустым")
+        return v
 
 class FeedbackRequest(BaseModel):
     session_id: str
     rating: int
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=2000)
     was_helpful: bool | None = None
 
 
