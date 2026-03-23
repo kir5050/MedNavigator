@@ -9,6 +9,9 @@ from fastapi import Depends, FastAPI, File, HTTPException, Header, Request, Uplo
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 
 from app.config import settings
@@ -36,7 +39,16 @@ logger = logging.getLogger(__name__)
 
 DISCLAIMER = "Информация носит справочный характер и не заменяет консультацию врача."
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="MedNavigator API", version="0.1.0")
+app.state.limiter = limiter
+app.add_exception_handler(
+    RateLimitExceeded,
+    lambda request, exc: JSONResponse(
+        status_code=429,
+        content={"detail": "Слишком много запросов. Пожалуйста, подождите и попробуйте снова."},
+    ),
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -172,7 +184,8 @@ class FeedbackRequest(BaseModel):
 # --- Endpoints ---
 
 @app.post("/api/v1/session/start", status_code=201)
-async def start_session():
+@limiter.limit("10/minute")
+async def start_session(request: Request):
     try:
         if db_session_maker is None:
             logger.error("db_session_maker is None — startup may have failed")
@@ -197,7 +210,8 @@ async def start_session():
 
 
 @app.post("/api/v1/session/{session_id}/message")
-async def send_message(session_id: str, req: MessageRequest):
+@limiter.limit("20/minute")
+async def send_message(request: Request, session_id: str, req: MessageRequest):
     async with db_session_maker() as db:
         session = await db.get(Session, session_id)
         if not session:
@@ -261,7 +275,8 @@ async def send_message(session_id: str, req: MessageRequest):
 
 
 @app.post("/api/v1/session/{session_id}/triage")
-async def run_triage(session_id: str):
+@limiter.limit("5/minute")
+async def run_triage(request: Request, session_id: str):
     """User explicitly requests triage result."""
     async with db_session_maker() as db:
         session = await db.get(Session, session_id)
@@ -304,7 +319,8 @@ async def run_triage(session_id: str):
 
 
 @app.post("/api/v1/session/{session_id}/upload")
-async def upload_file(session_id: str, file: UploadFile = File(...)):
+@limiter.limit("5/minute")
+async def upload_file(request: Request, session_id: str, file: UploadFile = File(...)):
     async with db_session_maker() as db:
         session = await db.get(Session, session_id)
         if not session:
