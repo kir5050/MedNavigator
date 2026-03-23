@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.config import settings
 from app.llm import (
@@ -148,6 +148,18 @@ async def startup():
     try:
         engine = await get_engine(settings.database_url)
         db_session_maker = get_session_maker(engine)
+
+        # Migrate: add pdf_cache columns for existing databases
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text("ALTER TABLE triage_results ADD COLUMN pdf_cache BLOB"))
+            except Exception:
+                pass  # Column already exists
+            try:
+                await conn.execute(text("ALTER TABLE triage_results ADD COLUMN pdf_generated_at DATETIME"))
+            except Exception:
+                pass  # Column already exists
+
         logger.info("Database initialized: %s", settings.database_url)
 
         providers = build_providers()
@@ -449,6 +461,8 @@ async def get_result(session_id: str):
 @app.get("/api/v1/session/{session_id}/pdf")
 @limiter.limit("5/minute")
 async def download_pdf(request: Request, session_id: str):
+    from datetime import datetime as dt
+
     async with db_session_maker() as db:
         session = await db.get(Session, session_id)
         if not session:
@@ -457,6 +471,19 @@ async def download_pdf(request: Request, session_id: str):
             raise HTTPException(409, "Session not yet completed")
 
         state = json.loads(session.state_json)
+
+        # Check for cached PDF
+        result = await db.execute(
+            select(TriageResult).where(TriageResult.session_id == session_id)
+        )
+        triage_record = result.scalar_one_or_none()
+
+        if triage_record and triage_record.pdf_cache:
+            return Response(
+                content=triage_record.pdf_cache,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename=mednavigator_{session_id[:8]}.pdf"},
+            )
 
     # LLM enrichment: medical terminology, questions, what to bring
     llm_data = await triage_engine.generate_pdf_data(state)
@@ -507,8 +534,8 @@ async def download_pdf(request: Request, session_id: str):
     red_flags = []
     for line in state.get("history_lines", []):
         if line.startswith("Пациент: "):
-            text = line[len("Пациент: "):]
-            flag = triage_engine.kb.check_red_flags(text)
+            rf_text = line[len("Пациент: "):]
+            flag = triage_engine.kb.check_red_flags(rf_text)
             if flag and flag not in red_flags:
                 red_flags.append(flag)
 
@@ -529,6 +556,18 @@ async def download_pdf(request: Request, session_id: str):
     }
 
     pdf_bytes = PDFGenerator.generate(pdf_data, session_id)
+
+    # Cache the generated PDF
+    if triage_record:
+        async with db_session_maker() as db:
+            result = await db.execute(
+                select(TriageResult).where(TriageResult.session_id == session_id)
+            )
+            record = result.scalar_one_or_none()
+            if record:
+                record.pdf_cache = pdf_bytes
+                record.pdf_generated_at = dt.utcnow()
+                await db.commit()
 
     return Response(
         content=pdf_bytes,

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Enum, Integer, String, Text, Boolean
+from sqlalchemy import JSON, DateTime, Enum, Integer, LargeBinary, String, Text, Boolean
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -49,6 +49,8 @@ class TriageResult(Base):
     llm_provider: Mapped[str] = mapped_column(String(20), default="")
     tokens_total: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    pdf_cache: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    pdf_generated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Feedback(Base):
