@@ -1,3 +1,4 @@
+// Production: VITE_API_URL=https://api.navimedic.ru
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
 export interface SessionStartResponse {
