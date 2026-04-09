@@ -150,6 +150,57 @@ class TriageEngine:
 
         specialists = routing.get("specialists", [])
 
+        # --- Post-LLM validation via KB symptoms_hint scoring ---
+        symptom_keys = list(set(kb_matches))
+        # Also try to extract keys from LLM-parsed symptoms
+        for s in all_symptoms:
+            name = s.get("name", "") if isinstance(s, dict) else str(s)
+            for matched_key in self.kb.match_symptoms(name):
+                if matched_key not in symptom_keys:
+                    symptom_keys.append(matched_key)
+
+        # Resolve LLM specialist names to keys
+        llm_spec_keys = []
+        for spec in specialists:
+            spec_name = spec.get("specialty", "")
+            resolved = self.kb._resolve_specialty_key(spec_name)
+            if resolved:
+                llm_spec_keys.append(resolved)
+
+        if symptom_keys and llm_spec_keys:
+            validation = self.kb.validate_llm_routing(llm_spec_keys, symptom_keys)
+
+            if validation["warnings"]:
+                logger.warning("LLM routing validation: %s", validation["warnings"])
+
+            # If ALL LLM specialists score < 0.2, fall back to KB routing
+            all_low = all(v["kb_score"] < 0.2 for v in validation["validated"])
+            if all_low and validation["validated"]:
+                kb_routing = self.kb.get_kb_routing(symptom_keys)
+                if kb_routing:
+                    logger.warning(
+                        "Full KB fallback: LLM specialists all scored < 0.2, "
+                        "using KB routing instead: %s", kb_routing
+                    )
+                    specialists = []
+                    for item in kb_routing[:3]:
+                        specialists.append({
+                            "specialty": item["name"],
+                            "reason": f"Рекомендация на основе анализа симптомов (совпадение: {item['weight']:.0%})",
+                            "source": "kb_fallback",
+                        })
+                    routing["specialists"] = specialists
+            else:
+                # Add high-confidence KB suggestions that LLM missed
+                for suggestion in validation["kb_suggestions"]:
+                    if suggestion["weight"] >= 0.5:
+                        specialists.append({
+                            "specialty": suggestion["name"],
+                            "reason": f"Дополнительная рекомендация (совпадение симптомов: {suggestion['weight']:.0%})",
+                            "source": "kb_validation",
+                        })
+                routing["specialists"] = specialists
+
         # Generate personalized preparation via LLM based on actual symptoms
         triage_summary = triage.get("summary", "")
         specialists_for_prompt = json.dumps(
