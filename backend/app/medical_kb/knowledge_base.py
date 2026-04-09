@@ -1,7 +1,10 @@
+import logging
 import os
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class MedicalKB:
@@ -81,3 +84,83 @@ class MedicalKB:
         if spec:
             return spec.get("preparation", [])
         return []
+
+    # --- KB-based routing validation (uses symptoms_hint from specialties.yaml) ---
+
+    def _resolve_specialty_key(self, name: str) -> str | None:
+        """Resolve specialist display name to key (e.g. 'Невролог' -> 'neurologist')."""
+        for key, spec in self.specialties.items():
+            if spec["name"] == name:
+                return key
+        return None
+
+    def score_specialist(self, symptom_keys: list[str], specialist_key: str) -> float:
+        """Score specialist relevance for given symptoms using symptoms_hint overlap.
+        Returns 0.0–1.0.
+        """
+        spec = self.specialties.get(specialist_key)
+        if not spec:
+            return 0.0
+
+        hints = spec.get("symptoms_hint", [])
+        if not hints:
+            return 0.0
+
+        matched = len(set(symptom_keys) & set(hints))
+        if matched == 0:
+            return 0.0
+
+        base_score = matched / len(hints)
+        if matched >= 3:
+            return min(round(base_score * 1.3, 2), 1.0)
+        if matched >= 2:
+            return min(round(base_score * 1.15, 2), 1.0)
+        return round(base_score, 2)
+
+    def get_kb_routing(self, symptom_keys: list[str]) -> list[dict]:
+        """Score all specialists against symptoms, return sorted list."""
+        results = []
+        for key, spec in self.specialties.items():
+            score = self.score_specialist(symptom_keys, key)
+            if score > 0.0:
+                results.append({
+                    "specialist": key,
+                    "name": spec["name"],
+                    "weight": score,
+                })
+        results.sort(key=lambda x: x["weight"], reverse=True)
+        return results
+
+    def validate_llm_routing(
+        self,
+        llm_specialist_keys: list[str],
+        symptom_keys: list[str],
+    ) -> dict:
+        """Validate LLM routing against KB symptom-based scoring.
+
+        Returns:
+            validated: each LLM specialist with its KB score
+            warnings: specialists recommended by LLM but unsupported by KB
+            kb_suggestions: high-scoring specialists that LLM missed
+        """
+        validated = []
+        warnings = []
+
+        for spec_key in llm_specialist_keys:
+            score = self.score_specialist(symptom_keys, spec_key)
+            validated.append({"specialist": spec_key, "kb_score": score})
+            if score < 0.2:
+                warnings.append(
+                    f"LLM recommended '{spec_key}' but KB score is {score:.2f}"
+                )
+
+        kb_suggestions = []
+        for item in self.get_kb_routing(symptom_keys):
+            if item["weight"] >= 0.5 and item["specialist"] not in llm_specialist_keys:
+                kb_suggestions.append(item)
+
+        return {
+            "validated": validated,
+            "warnings": warnings,
+            "kb_suggestions": kb_suggestions,
+        }
