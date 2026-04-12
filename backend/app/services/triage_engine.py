@@ -44,6 +44,8 @@ class TriageEngine:
         self.llm = llm
         self.kb = kb
 
+    _NONSENSE_RE = re.compile(r"[а-яёa-z]", re.IGNORECASE)
+
     async def process_message(
         self, text: str, session_state: dict
     ) -> dict:
@@ -54,6 +56,18 @@ class TriageEngine:
                 "response": emergency,
                 "status": "emergency",
                 "is_emergency": True,
+            }
+
+        # 1.5. Reject obviously non-text input (digits, symbols only)
+        if len(self._NONSENSE_RE.findall(text)) < 2:
+            return {
+                "response": "Пожалуйста, опишите словами, что вас беспокоит — "
+                            "например, «болит голова» или «температура и кашель».",
+                "status": "collecting",
+                "is_emergency": False,
+                "symptoms": session_state.get("symptoms", []),
+                "kb_matches": [],
+                "clarification_count": session_state.get("clarification_count", 0),
             }
 
         history = session_state.get("history", "")
@@ -101,7 +115,28 @@ class TriageEngine:
                 "clarification_count": clarification_count + 1,
             }
 
-        # 4. Enough info collected — signal "ready" so user can trigger triage
+        # 4. Verify we actually have symptoms before declaring "ready"
+        has_real_symptoms = any(
+            isinstance(s, dict) and s.get("name") for s in all_symptoms
+        )
+        has_kb_matches = len(kb_matches) > 0
+
+        if not has_real_symptoms and not has_kb_matches:
+            logger.warning(
+                "No symptoms after %d clarifications, resetting. symptoms=%s",
+                clarification_count, all_symptoms,
+            )
+            return {
+                "response": "К сожалению, я не смог определить симптомы из вашего описания. "
+                            "Пожалуйста, опишите словами, что именно вас беспокоит — "
+                            "например, «болит голова и тошнит» или «кашель и температура».",
+                "status": "collecting",
+                "is_emergency": False,
+                "symptoms": [],
+                "kb_matches": [],
+                "clarification_count": max(clarification_count - 2, 0),
+            }
+
         return {
             "response": "Достаточно информации. Вы можете получить рекомендацию или продолжить описывать симптомы.",
             "status": "ready",
@@ -115,6 +150,27 @@ class TriageEngine:
         """Run triage + routing. Called when user explicitly requests result."""
         all_symptoms = session_state.get("symptoms", [])
         history = session_state.get("history", "")
+
+        # Guard: refuse to triage without real symptoms
+        has_real = any(
+            (isinstance(s, dict) and s.get("name")) or (isinstance(s, str) and len(s) > 1)
+            for s in all_symptoms
+        )
+        if not has_real:
+            logger.warning("run_triage called with no real symptoms: %s", all_symptoms)
+            return {
+                "triage": {
+                    "urgency": "low",
+                    "urgency_reason": "Симптомы не определены",
+                    "medical_areas": [],
+                    "summary": "Не удалось определить симптомы. Пожалуйста, опишите жалобы подробнее.",
+                },
+                "routing": {
+                    "specialists": [],
+                    "explanation": "Недостаточно данных для рекомендации специалиста.",
+                },
+                "specialists": [],
+            }
 
         # KB matches from all collected symptoms
         kb_matches = []
