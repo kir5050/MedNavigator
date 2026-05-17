@@ -563,6 +563,7 @@ async def download_pdf(request: Request, session_id: str):
         "history_lines": state.get("history_lines", []),
         "uploaded_files": state.get("uploaded_files", []),
         "red_flags": red_flags,
+        "is_crisis_only": state.get("crisis_locked", False),
     }
 
     pdf_bytes = PDFGenerator.generate(pdf_data, session_id)
