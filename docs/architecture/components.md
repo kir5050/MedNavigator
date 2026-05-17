@@ -33,8 +33,8 @@
               |              |              |
     +---------v---+  +-------v------+ +-----v--------+
     | LLM Service |  | Medical KB   | | PDF Generator|
-    | (YandexGPT/ |  | (symptoms,   | | (WeasyPrint) |
-    |  GigaChat)  |  |  specialties)| |              |
+    | (OpenRouter)|  | (symptoms,   | | (WeasyPrint) |
+    |             |  |  specialties)| |              |
     +------+------+  +-------+------+ +--------------+
            |                 |
     +------v------+  +-------v------+
@@ -75,10 +75,10 @@
 - Red flag detection (immediate emergency routing)
 
 ### 5. LLM Service
-- Provider abstraction (interface for YandexGPT/GigaChat)
+- Provider abstraction via `LLMProvider` ABC; current implementation: OpenRouter
 - Prompt templates management
 - Response parsing and validation
-- Automatic fallback between providers
+- Provider fallback chain (trivial with a single provider, extensible)
 
 ### 6. Medical Knowledge Base
 - Specialty definitions and routing rules

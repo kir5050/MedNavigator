@@ -4,7 +4,7 @@
 
 ## Context
 MedNavigator — MVP informational service for medical triage routing.
-Constraints: mobile-first PWA, Russian-hosted LLM (YandexGPT/GigaChat),
+Constraints: mobile-first PWA, OpenRouter LLM (OpenAI-compatible API),
 single developer, budget ~10k RUB/month for LLM API, must run locally with one command.
 
 ---
@@ -63,7 +63,7 @@ FastAPI (as specified in requirements) — async, auto-docs, Pydantic validation
 | Database | SQLite (via SQLAlchemy/aiosqlite) |
 | PDF | WeasyPrint |
 | LLM Cache | diskcache |
-| LLM | OpenRouter (dev/test) / YandexGPT (prod primary) / GigaChat (prod fallback) |
+| LLM | OpenRouter (OpenAI-compatible API) |
 | Containerization | Docker Compose |
 
 ## Decision
