@@ -502,8 +502,8 @@ async def download_pdf(request: Request, session_id: str):
         if line.startswith("Пациент: "):
             rf_text = line[len("Пациент: "):]
             flag = triage_engine.kb.check_red_flags(rf_text)
-            if flag and flag not in red_flags:
-                red_flags.append(flag)
+            if flag and flag["message"] not in red_flags:
+                red_flags.append(flag["message"])
 
     pdf_data = {
         # LLM-generated enrichments
