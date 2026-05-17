@@ -53,9 +53,10 @@ class TriageEngine:
         emergency = self.kb.check_red_flags(text)
         if emergency:
             return {
-                "response": emergency,
+                "response": emergency["message"],
                 "status": "emergency",
                 "is_emergency": True,
+                "is_crisis": emergency["is_crisis"],
             }
 
         # 1.5. Reject obviously non-text input (digits, symbols only)

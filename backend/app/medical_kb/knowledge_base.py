@@ -30,19 +30,27 @@ class MedicalKB:
                 index[syn.lower()] = key
         return index
 
-    def _build_red_flag_patterns(self) -> list[tuple[str, str]]:
+    def _build_red_flag_patterns(self) -> list[tuple[str, str, bool]]:
         patterns = []
         for _category, data in self.red_flags.items():
+            is_crisis = bool(data.get("is_crisis", False))
             for pattern in data["patterns"]:
-                patterns.append((pattern.lower(), data["message"]))
+                patterns.append((pattern.lower(), data["message"], is_crisis))
         return patterns
 
-    def check_red_flags(self, text: str) -> str | None:
+    def check_red_flags(self, text: str) -> dict | None:
+        # Crisis matches dominate over physical red-flags regardless of YAML order:
+        # a patient saying "хочу умереть от боли в груди" must hit the crisis path
+        # (suicide hotline + session lock), not the cardiac message.
         text_lower = text.lower()
-        for pattern, message in self._red_flag_patterns:
+        first_non_crisis = None
+        for pattern, message, is_crisis in self._red_flag_patterns:
             if pattern in text_lower:
-                return message
-        return None
+                if is_crisis:
+                    return {"message": message, "is_crisis": True}
+                if first_non_crisis is None:
+                    first_non_crisis = {"message": message, "is_crisis": False}
+        return first_non_crisis
 
     def match_symptoms(self, text: str) -> list[str]:
         text_lower = text.lower()
