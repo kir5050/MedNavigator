@@ -14,54 +14,80 @@ class PDFGenerator:
 
     @staticmethod
     def generate(data: dict, session_id: str) -> bytes:
+        html_content = PDFGenerator._build_html(data, session_id)
+        return HTML(string=html_content).write_pdf()
+
+    @staticmethod
+    def _build_html(data: dict, session_id: str) -> str:
         now = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M UTC")
         urgency = data.get("urgency", "medium")
         urgency_text, urgency_color, urgency_bg = PDFGenerator.URGENCY_MAP.get(
             urgency, PDFGenerator.URGENCY_MAP["medium"]
         )
 
+        # Crisis-only sessions (suicide/self-harm trigger fired) get a different
+        # urgency block and skip routine intake-derived sections. A routine
+        # "schedule a visit in 1-2 days" banner next to a hotline number is
+        # cognitively dissonant and potentially harmful for a patient in crisis.
+        is_crisis_only = bool(data.get("is_crisis_only", False))
+
+        if is_crisis_only:
+            urgency_block = PDFGenerator._build_crisis_banner()
+        else:
+            urgency_block = (
+                f'<div class="urgency-box">'
+                f'<strong>{escape(urgency_text)}</strong>'
+                f'</div>'
+            )
+
         sections = []
 
-        # --- 1. Symptoms / complaints ---
-        symptoms_section = PDFGenerator._build_symptoms_section(data)
-        if symptoms_section:
-            sections.append(symptoms_section)
+        # --- 1. Symptoms / complaints (skipped for crisis-only — empty intake) ---
+        if not is_crisis_only:
+            symptoms_section = PDFGenerator._build_symptoms_section(data)
+            if symptoms_section:
+                sections.append(symptoms_section)
 
-        # --- 2. User's answers from conversation ---
+        # --- 2. User's answers from conversation (kept for context) ---
         history_section = PDFGenerator._build_history_section(data)
         if history_section:
             sections.append(history_section)
 
-        # --- 3. Uploaded document analyses ---
+        # --- 3. Uploaded document analyses (kept; may carry pre-crisis context) ---
         docs_section = PDFGenerator._build_documents_section(data)
         if docs_section:
             sections.append(docs_section)
 
-        # --- 4. Specialists ---
-        specialists_section = PDFGenerator._build_specialists_section(data)
-        if specialists_section:
-            sections.append(specialists_section)
+        # --- 4. Specialists (skipped for crisis-only — no routing was run) ---
+        if not is_crisis_only:
+            specialists_section = PDFGenerator._build_specialists_section(data)
+            if specialists_section:
+                sections.append(specialists_section)
 
-        # --- 5. Routing explanation ---
+        # --- 5. Routing explanation (skipped for crisis-only).
+        # The existing `if explanation` gate already swallows the empty default
+        # for crisis sessions; the not-is_crisis_only check is defence in depth
+        # in case future LLM logic starts populating routing_explanation for
+        # crisis sessions too.
         explanation = data.get("routing_explanation", "")
-        if explanation:
+        if explanation and not is_crisis_only:
             sections.append(
                 f'<h2>Пояснение</h2><p>{escape(explanation)}</p>'
             )
 
-        # --- 6. Questions for doctor (LLM-generated) ---
+        # --- 6. Questions for doctor (skipped for crisis-only) ---
         questions = data.get("questions_for_doctor", [])
-        if questions:
+        if questions and not is_crisis_only:
             items = "".join(f"<li>{escape(str(q))}</li>" for q in questions)
             sections.append(f"<h2>Вопросы для врача</h2><ol>{items}</ol>")
 
-        # --- 7. What to bring (LLM-generated) ---
+        # --- 7. What to bring (skipped for crisis-only) ---
         what_to_bring = data.get("what_to_bring", [])
-        if what_to_bring:
+        if what_to_bring and not is_crisis_only:
             items = "".join(f"<li>{escape(str(item))}</li>" for item in what_to_bring)
             sections.append(f"<h2>Что взять с собой</h2><ul>{items}</ul>")
 
-        # --- 8. Red flags ---
+        # --- 8. Red flags (kept; for crisis sessions this is the hotline section) ---
         red_flags_section = PDFGenerator._build_red_flags_section(data)
         if red_flags_section:
             sections.append(red_flags_section)
@@ -176,6 +202,41 @@ class PDFGenerator:
         margin-top: 0;
         padding-bottom: 0;
     }}
+    .crisis-banner {{
+        background: #FECACA;
+        border: 2px solid #B91C1C;
+        border-radius: 8px;
+        padding: 18px 20px;
+        margin: 16px 0 24px 0;
+        page-break-inside: avoid;
+    }}
+    .crisis-banner .crisis-title {{
+        color: #991B1B;
+        font-size: 14pt;
+        font-weight: 700;
+        margin: 0 0 10px 0;
+        display: block;
+    }}
+    .crisis-banner p {{
+        margin: 6px 0;
+        color: #1E293B;
+    }}
+    .crisis-banner ul {{
+        margin: 8px 0;
+        padding-left: 24px;
+    }}
+    .crisis-banner li {{
+        margin-bottom: 4px;
+    }}
+    .crisis-banner .crisis-phone {{
+        font-weight: 700;
+        color: #991B1B;
+    }}
+    .crisis-banner .crisis-reassurance {{
+        font-style: italic;
+        color: #475569;
+        margin-top: 10px;
+    }}
     .symptom-tag {{
         display: inline-block;
         background: #EFF6FF;
@@ -225,9 +286,7 @@ class PDFGenerator:
     <div class="subtitle">Дата формирования: {now} | Сессия: {session_id[:8]}</div>
 </div>
 
-<div class="urgency-box">
-    <strong>{escape(urgency_text)}</strong>
-</div>
+{urgency_block}
 
 {body_content}
 
@@ -246,7 +305,21 @@ class PDFGenerator:
 </body>
 </html>"""
 
-        return HTML(string=html_content).write_pdf()
+        return html_content
+
+    @staticmethod
+    def _build_crisis_banner() -> str:
+        return (
+            '<div class="crisis-banner">'
+            '<span class="crisis-title">Это срочное обращение, требующее немедленной помощи</span>'
+            '<p>Пожалуйста, обратитесь за помощью прямо сейчас:</p>'
+            '<ul>'
+            '<li>Телефон доверия: <span class="crisis-phone">8-800-2000-122</span> (бесплатно, круглосуточно)</li>'
+            '<li>Скорая помощь: <span class="crisis-phone">103 или 112</span></li>'
+            '</ul>'
+            '<p class="crisis-reassurance">Вы не одиноки, и помощь доступна.</p>'
+            '</div>'
+        )
 
     @staticmethod
     def _build_symptoms_section(data: dict) -> str:
