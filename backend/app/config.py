@@ -2,21 +2,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # LLM
-    llm_primary_provider: str = "openrouter"
-
     # OpenRouter
     openrouter_api_key: str = ""
     openrouter_model: str = "anthropic/claude-opus-4.6"
-
-    # YandexGPT
-    yandex_api_key: str = ""
-    yandex_folder_id: str = ""
-    yandex_model: str = "yandexgpt-lite"
-
-    # GigaChat
-    gigachat_client_id: str = ""
-    gigachat_client_secret: str = ""
 
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173", "https://app.navimedic.ru", "https://navimedic.ru"]

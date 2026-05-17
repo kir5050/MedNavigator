@@ -26,26 +26,12 @@ class LLMProvider(ABC):
 
 ## Providers
 
-### YandexGPT (Primary)
-- API: https://llm.api.cloud.yandex.net/foundationModels/v1/completion
-- Auth: IAM token or API key
-- Model: yandexgpt-lite (cheaper) or yandexgpt (better quality)
-- Pricing: ~0.2 RUB per 1K tokens
-
-### OpenRouter (Development / Testing + Production option)
+### OpenRouter (current implementation)
 - API: https://openrouter.ai/api/v1/chat/completions
 - Auth: API key (Bearer token)
 - OpenAI-compatible API format
-- Model: anthropic/claude-opus-4.6 (default)
-- Access to multiple models (Claude, GPT, Llama, etc.)
-- Primary use: development and testing
-- Can also be used in production as standalone provider (without YandexGPT/GigaChat)
-
-### GigaChat (Production Fallback)
-- API: https://gigachat.devices.sberbank.ru/api/v1/chat/completions
-- Auth: OAuth2 client credentials
-- Model: GigaChat
-- Pricing: free tier available
+- Default model: `anthropic/claude-opus-4.6` (overridable via `OPENROUTER_MODEL`)
+- Access to multiple models behind a single API (Claude, GPT, Llama, etc.)
 
 ### Provider Manager
 ```python

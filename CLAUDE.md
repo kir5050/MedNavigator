@@ -6,8 +6,8 @@
 2) подготовиться к визиту (чеклист + PDF-выписка).
 
 Это **НЕ** медицинское изделие, **НЕ** телемедицина, **НЕ** диагностическая
-система. Юрисдикция — РФ; инфраструктура и LLM — российские
-(YandexGPT/GigaChat). OpenRouter — только для разработки.
+система. Юрисдикция — РФ. LLM-провайдер — OpenRouter
+(OpenAI-совместимый API).
 
 ---
 
@@ -128,8 +128,8 @@ Backend (FastAPI)
   │     → triage → routing → preparation → PDF summary
   ├─ MedicalKB       → YAML (symptoms / specialties / red_flags), синонимы,
   │                    scoring symptoms_hint, валидация LLM-роутинга
-  ├─ LLMManager      → каскад провайдеров + diskcache
-  │     OpenRouter (dev) / YandexGPT (prod primary) / GigaChat (prod fallback)
+  ├─ LLMManager      → провайдер-цепочка + diskcache
+  │     OpenRouter (единственная текущая реализация)
   └─ PDFGenerator    → WeasyPrint (HTML/CSS → PDF), кэш в TriageResult.pdf_cache
 ```
 
@@ -154,7 +154,7 @@ backend/
     llm/
       base.py                     # LLMProvider ABC, LLMResponse
       manager.py                  # каскад + diskcache
-      yandexgpt.py, gigachat.py, openrouter.py
+      openrouter.py               # OpenRouterProvider
     prompts/templates.py          # LEGAL_GUARDRAILS + все системные промпты
     models/database.py            # SQLAlchemy: Session, Message, TriageResult, Feedback
     pdf/generator.py              # WeasyPrint-сборка PDF-выписки
@@ -200,10 +200,11 @@ docker-compose.yml                # backend (8080) + frontend (3000)
 
 ## 9. LLM-слой и кэширование
 
-- Интерфейс — `LLMProvider` (`llm/base.py`), реализации: OpenRouter,
-  YandexGPT, GigaChat. Порядок задаётся `LLM_PRIMARY_PROVIDER` —
-  выбранный провайдер первый, остальные — fallback (`main.py`,
-  `build_providers`).
+- Интерфейс — `LLMProvider` (`llm/base.py`), единственная текущая
+  реализация — `OpenRouterProvider` (`llm/openrouter.py`). `LLMManager`
+  поддерживает provider-fallback цепочку, но в текущей сборке она
+  тривиальна (один провайдер). При добавлении нового провайдера —
+  расширять список в `build_providers` (`main.py`).
 - `LLMManager.generate` (`llm/manager.py`):
   - SHA-256 cache key по `(system, prompt)`;
   - diskcache на диске, TTL по умолчанию 24 ч,

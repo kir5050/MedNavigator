@@ -16,11 +16,9 @@ from sqlalchemy import func, select, text
 
 from app.config import settings
 from app.llm import (
-    GigaChatProvider,
     LLMManager,
     LLMProvider,
     OpenRouterProvider,
-    YandexGPTProvider,
 )
 from app.medical_kb import MedicalKB
 from app.models.database import (
@@ -104,41 +102,9 @@ async def health():
 
 
 def build_providers() -> list[LLMProvider]:
-    providers: list[LLMProvider] = []
-    primary = settings.llm_primary_provider
-
-    def add_openrouter():
-        if settings.openrouter_api_key:
-            providers.append(
-                OpenRouterProvider(settings.openrouter_api_key, settings.openrouter_model)
-            )
-
-    def add_yandex():
-        if settings.yandex_api_key and settings.yandex_folder_id:
-            providers.append(
-                YandexGPTProvider(
-                    settings.yandex_api_key, settings.yandex_folder_id, settings.yandex_model
-                )
-            )
-
-    def add_gigachat():
-        if settings.gigachat_client_id and settings.gigachat_client_secret:
-            providers.append(
-                GigaChatProvider(settings.gigachat_client_id, settings.gigachat_client_secret)
-            )
-
-    # Primary first, then others as fallback
-    order = {"openrouter": [add_openrouter, add_yandex, add_gigachat],
-             "yandexgpt": [add_yandex, add_gigachat, add_openrouter],
-             "gigachat": [add_gigachat, add_yandex, add_openrouter]}
-
-    for fn in order.get(primary, [add_openrouter, add_yandex, add_gigachat]):
-        fn()
-
-    if not providers:
-        raise RuntimeError("No LLM providers configured. Set API keys in .env")
-
-    return providers
+    if not settings.openrouter_api_key:
+        raise RuntimeError("OPENROUTER_API_KEY not set in .env")
+    return [OpenRouterProvider(settings.openrouter_api_key, settings.openrouter_model)]
 
 
 @app.on_event("startup")
