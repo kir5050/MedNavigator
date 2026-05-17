@@ -38,6 +38,16 @@ logger = logging.getLogger(__name__)
 DISCLAIMER = "Информация носит справочный характер и не заменяет консультацию врача."
 MAX_SESSION_MESSAGES = 30
 
+# Last-resort fallback for crisis-locked sessions when neither session state
+# nor the suicidal entry in red_flags.yaml is available. Kept as an explicit
+# named module-level constant so reviewers can spot drift from the YAML
+# message. Must remain an exact copy of red_flags.yaml > suicidal.message.
+CRISIS_FALLBACK_MESSAGE = (
+    "Пожалуйста, обратитесь за помощью прямо сейчас. "
+    "Телефон доверия: 8-800-2000-122 (бесплатно, круглосуточно). "
+    "Скорая помощь: 103 или 112. Вы не одиноки, и помощь доступна."
+)
+
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="MedNavigator API", version="0.1.0")
 app.state.limiter = limiter
@@ -205,6 +215,37 @@ async def send_message(request: Request, session_id: str, req: MessageRequest):
             raise HTTPException(404, "Session not found")
         if session.status == "expired":
             raise HTTPException(410, "Session expired")
+
+        state = json.loads(session.state_json)
+
+        # Persistent crisis lock: once a suicide/self-harm trigger has fired,
+        # every subsequent message in this session returns the same crisis
+        # message instead of resuming intake. The lock is checked BEFORE the
+        # message-count limit because the crisis loop doesn't call the LLM
+        # (no resource the limit exists to cap), and a 30-message 409 in a
+        # crisis context would be both technically misleading and harmful UX.
+        if state.get("crisis_locked"):
+            locked_message = (
+                state.get("crisis_message")
+                or triage_engine.kb.red_flags.get("suicidal", {}).get("message")
+                or CRISIS_FALLBACK_MESSAGE
+            )
+            user_msg = Message(session_id=session_id, role="user", text=req.text)
+            db.add(user_msg)
+            assistant_msg = Message(
+                session_id=session_id, role="assistant", text=locked_message,
+            )
+            db.add(assistant_msg)
+            await db.commit()
+            return {
+                "message": locked_message,
+                "session_status": "emergency",
+                "disclaimer": DISCLAIMER,
+                "extracted_symptoms": [],
+                "is_emergency": True,
+                "emergency_message": locked_message,
+            }
+
         if session.message_count >= MAX_SESSION_MESSAGES:
             raise HTTPException(
                 status_code=409,
@@ -216,7 +257,6 @@ async def send_message(request: Request, session_id: str, req: MessageRequest):
         db.add(user_msg)
 
         # Build history
-        state = json.loads(session.state_json)
         history_lines = state.get("history_lines", [])
         history_lines.append(f"Пациент: {req.text}")
         history = "\n".join(history_lines)
@@ -234,6 +274,10 @@ async def send_message(request: Request, session_id: str, req: MessageRequest):
             state["triage"] = result["triage"]
         if result.get("routing"):
             state["routing"] = result["routing"]
+
+        if result.get("is_crisis"):
+            state["crisis_locked"] = True
+            state["crisis_message"] = result["response"]
 
         history_lines.append(f"Ассистент: {result['response']}")
         state["history_lines"] = history_lines
