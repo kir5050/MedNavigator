@@ -212,3 +212,107 @@ class TestUploadedFilesRendering:
         # Use rendered-element pattern, not bare class name (the
         # ``.docs-disclaimer`` selector is in every PDF's <style> block).
         assert '<p class="docs-disclaimer">' not in html
+
+
+# ---------------------------------------------------------------------------
+# Primary acceptance criterion: PDF download path makes 0 LLM calls.
+# ---------------------------------------------------------------------------
+
+
+import json
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from unittest.mock import AsyncMock, MagicMock
+
+
+@pytest_asyncio.fixture
+async def client_with_mocked_llm():
+    """Spin up the FastAPI app with in-memory SQLite and a mocked LLM.
+    The LLM mock will fail the test instantly if any LLM call is made
+    during the PDF request path (asserted in the individual tests)."""
+    from app.main import app
+    from app.medical_kb import MedicalKB
+    from app.models.database import get_engine, get_session_maker
+    from app.services.triage_engine import TriageEngine
+    from app import main as main_module
+
+    engine = await get_engine("sqlite+aiosqlite:///:memory:")
+    session_maker = get_session_maker(engine)
+
+    llm = MagicMock()
+    llm.generate = AsyncMock(return_value=MagicMock(text='{"symptoms": []}'))
+    triage = TriageEngine(llm=llm, kb=MedicalKB())
+
+    main_module.db_session_maker = session_maker
+    main_module.triage_engine = triage
+    app.state.limiter.enabled = False
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, llm, session_maker
+
+    app.state.limiter.enabled = True
+
+
+async def _seed_completed_session(session_maker, *, crisis: bool, state_overrides: dict | None = None):
+    """Insert a Session row that's ready for PDF download — status must be
+    completed or emergency, state_json must carry enough for build_view_model."""
+    from app.models.database import Session as DBSession
+    base_state = {
+        "history_lines": ["Пациент: болит голова и кашель"],
+        "symptoms": [{"name": "болит голова"}, {"name": "кашель"}],
+        "triage": {"urgency": "medium", "summary": "..."},
+        "routing": {
+            "specialists": [
+                {"specialty": "Терапевт", "reason": "ignored",
+                 "preparation": ["ignored"]},
+            ],
+            "explanation": "ignored",
+        },
+    }
+    if crisis:
+        base_state["crisis_locked"] = True
+    if state_overrides:
+        base_state.update(state_overrides)
+
+    sess = DBSession(
+        status="emergency" if crisis else "completed",
+        state_json=json.dumps(base_state, ensure_ascii=False),
+    )
+    async with session_maker() as db:
+        db.add(sess)
+        await db.commit()
+        await db.refresh(sess)
+        return sess.id
+
+
+class TestNoLLMCallsForPDF:
+    """Primary acceptance criterion of the PDF redesign:
+    GET /api/v1/session/{id}/pdf must NOT invoke the LLM."""
+
+    @pytest.mark.asyncio
+    async def test_non_crisis_pdf_request_zero_llm_calls(self, client_with_mocked_llm):
+        client, llm, session_maker = client_with_mocked_llm
+        sid = await _seed_completed_session(session_maker, crisis=False)
+
+        r = await client.get(f"/api/v1/session/{sid}/pdf")
+        assert r.status_code == 200
+        assert r.content.startswith(b"%PDF")
+        assert llm.generate.await_count == 0, (
+            f"LLM was called {llm.generate.await_count} times during a "
+            f"non-crisis PDF request — the redesign requires zero LLM calls "
+            f"on the PDF download path."
+        )
+
+    @pytest.mark.asyncio
+    async def test_crisis_pdf_request_zero_llm_calls(self, client_with_mocked_llm):
+        # Defence-in-depth: even the crisis branch must not invoke the LLM.
+        # build_view_model uses kb.check_red_flags (substring matcher, no LLM)
+        # to populate the crisis red-flags section.
+        client, llm, session_maker = client_with_mocked_llm
+        sid = await _seed_completed_session(session_maker, crisis=True)
+
+        r = await client.get(f"/api/v1/session/{sid}/pdf")
+        assert r.status_code == 200
+        assert r.content.startswith(b"%PDF")
+        assert llm.generate.await_count == 0

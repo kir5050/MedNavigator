@@ -30,14 +30,8 @@ from app.models.database import (
     get_session_maker,
 )
 from app.pdf import PDFGenerator
-from app.services.output_safety import (
-    FALLBACKS,
-    REINFORCED_SAFETY_RULES,
-    log_block,
-    preflight_pdf_data,
-    safe_generate_text,
-    validate_output,
-)
+from app.pdf.view_model import build_view_model
+from app.services.output_safety import FALLBACKS, safe_generate_text
 from app.services.triage_engine import TriageEngine
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
@@ -550,128 +544,17 @@ async def download_pdf(request: Request, session_id: str):
                 headers={"Content-Disposition": f"attachment; filename=mednavigator_{session_id[:8]}.pdf"},
             )
 
-    # LLM enrichment: medical terminology, questions, what to bring
-    llm_data = await triage_engine.generate_pdf_data(state)
-
-    # Build full PDF data from session state + LLM enrichment
-    routing = state.get("routing", {})
-    triage = state.get("triage", {})
-    specialists = routing.get("specialists", [])
-
-    # If preparation is missing (old sessions), regenerate via LLM
-    needs_preparation = any(
-        isinstance(spec, dict) and not spec.get("preparation")
-        for spec in specialists
-    )
-    if needs_preparation and specialists:
-        symptoms_json = json.dumps(state.get("symptoms", []), ensure_ascii=False)
-        triage_summary = triage.get("summary", "")
-        from app.prompts import PromptTemplates
-        specialists_for_prompt = json.dumps(
-            [{"specialty": s.get("specialty", ""), "reason": s.get("reason", "")}
-             for s in specialists if isinstance(s, dict)],
-            ensure_ascii=False,
-        )
-        system, prompt = PromptTemplates.preparation(
-            specialists_for_prompt, symptoms_json, triage_summary
-        )
-        try:
-            prep_result = await triage_engine.llm.generate(prompt, system, use_cache=False)
-            from app.services.triage_engine import extract_json as ej
-            prep_data = ej(prep_result.text)
-            preparations = prep_data.get("preparations", {})
-
-            # Output safety: any unsafe item → retry once with reinforced rules.
-            pre_retry_legacy = []
-            for spec_name, items in preparations.items():
-                for i, item in enumerate(items or []):
-                    if isinstance(item, str):
-                        r = validate_output(item)
-                        if not r.is_safe:
-                            pre_retry_legacy.append((f"preparations[{spec_name}][{i}]", r))
-            if pre_retry_legacy:
-                for fname, vres in pre_retry_legacy:
-                    log_block(
-                        channel="legacy_preparation", field_name=fname, result=vres,
-                        retry_attempted=True, fallback_applied=False,
-                    )
-                prep_result = await triage_engine.llm.generate(
-                    prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
-                    temperature=0.0, use_cache=False,
-                )
-                prep_data = ej(prep_result.text)
-                preparations = prep_data.get("preparations", {})
-                for spec_name in list(preparations.keys()):
-                    kept = []
-                    for i, item in enumerate(preparations.get(spec_name) or []):
-                        if not isinstance(item, str):
-                            continue
-                        r = validate_output(item)
-                        if r.is_safe:
-                            kept.append(item)
-                        else:
-                            log_block(
-                                channel="legacy_preparation",
-                                field_name=f"preparations[{spec_name}][{i}]",
-                                result=r, retry_attempted=True, fallback_applied=True,
-                            )
-                    preparations[spec_name] = kept
-
-            for spec in specialists:
-                if isinstance(spec, dict) and not spec.get("preparation"):
-                    spec_name = spec.get("specialty", "")
-                    llm_items = preparations.get(spec_name) if spec_name in preparations else None
-                    if llm_items:
-                        spec["preparation"] = llm_items
-                    else:
-                        # KB fallback when LLM didn't generate or items were filtered out.
-                        for key, kb_data in triage_engine.kb.specialties.items():
-                            if kb_data["name"] == spec_name:
-                                spec["preparation"] = kb_data.get("preparation", [])
-                                break
-        except Exception:
-            logger.warning("PDF preparation generation failed, using KB fallback")
-            for spec in specialists:
-                if isinstance(spec, dict) and not spec.get("preparation"):
-                    spec_name = spec.get("specialty", "")
-                    for key, kb_data in triage_engine.kb.specialties.items():
-                        if kb_data["name"] == spec_name:
-                            spec["preparation"] = kb_data.get("preparation", [])
-                            break
-
-    # Detect red flags from conversation
-    red_flags = []
-    for line in state.get("history_lines", []):
-        if line.startswith("Пациент: "):
-            rf_text = line[len("Пациент: "):]
-            flag = triage_engine.kb.check_red_flags(rf_text)
-            if flag and flag["message"] not in red_flags:
-                red_flags.append(flag["message"])
-
-    pdf_data = {
-        # LLM-generated enrichments
-        "complaints_medical": llm_data.get("complaints_medical", ""),
-        "complaints_simple": llm_data.get("complaints_simple", triage.get("summary", "")),
-        "questions_for_doctor": llm_data.get("questions_for_doctor", []),
-        "what_to_bring": llm_data.get("what_to_bring", []),
-        # Direct session data
-        "urgency": triage.get("urgency", "medium"),
-        "symptoms_list": state.get("symptoms", []),
-        "specialists": specialists,
-        "routing_explanation": routing.get("explanation", ""),
-        "history_lines": state.get("history_lines", []),
-        "uploaded_files": state.get("uploaded_files", []),
-        "red_flags": red_flags,
-        "is_crisis_only": state.get("crisis_locked", False),
-    }
-
-    # PDF preflight: strip unsafe persisted LLM-derived content (assistant
-    # history lines, uploaded_files[].analysis, LLM fields collected above).
-    # Defence-in-depth — most fields were already filtered at their LLM
-    # call site, but state may carry content from before this PR.
-    pdf_data = preflight_pdf_data(pdf_data)
-
-    pdf_bytes = PDFGenerator.generate(pdf_data, session_id)
+    # PDF redesign (feat/pdf-redesign): no LLM calls happen on the PDF
+    # download path. The view model builder is a pure function over
+    # session state + curated static blocks + KB-normalised symptom
+    # labels. All LLM-derived fields (complaints_*, routing.explanation,
+    # specialists[].reason/preparation, questions_for_doctor, what_to_bring,
+    # uploaded_files[].analysis) are intentionally NOT consumed by the
+    # renderer — they remain in state for other surfaces (ResultScreen),
+    # but the PDF is now a presentation layer over routing-time output
+    # plus static content.
+    view_model = build_view_model(state, session_id, triage_engine.kb)
+    pdf_bytes = PDFGenerator.generate(view_model, session_id)
 
     # Cache the generated PDF
     if triage_record:
