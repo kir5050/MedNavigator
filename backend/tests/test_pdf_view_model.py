@@ -216,6 +216,72 @@ class TestWhatPatientDescribed:
         # Only the safe canonical name survives.
         assert vm["what_patient_described"] == ["Головная боль"]
 
+    def test_deduplicates_headache_synonyms(self, kb):
+        # "боль в голове" is now a synonym; "Головная боль" is canonical;
+        # "болит голова" was already a synonym. All three must collapse
+        # to a single canonical entry.
+        vm = build_view_model(
+            {"symptoms": [
+                {"name": "Головная боль"},
+                {"name": "боль в голове"},
+                {"name": "болит голова"},
+            ]},
+            "abcdefgh", kb,
+        )
+        assert vm["what_patient_described"] == ["Головная боль"]
+
+    def test_maps_temperature_with_value_to_canonical(self, kb):
+        # Synonym "температура" exists; raw extraction wraps a numeric
+        # value into the name field. Substring fallback must catch it.
+        vm = build_view_model(
+            {"symptoms": [{"name": "температура 37.0"}]},
+            "abcdefgh", kb,
+        )
+        assert vm["what_patient_described"] == ["Повышенная температура"]
+
+    def test_pdf_demo_case_symptoms_are_clean(self, kb):
+        # The exact demo-case reported on prod: canonical + raw synonym
+        # of the same symptom + raw measurement form. Expected output
+        # is the post-fix clean list, no duplicates, no raw forms.
+        vm = build_view_model(
+            {"symptoms": [
+                {"name": "Головная боль"},
+                {"name": "Кашель"},
+                {"name": "боль в голове"},
+                {"name": "температура 37.0"},
+            ]},
+            "abcdefgh", kb,
+        )
+        assert vm["what_patient_described"] == [
+            "Головная боль",
+            "Кашель",
+            "Повышенная температура",
+        ]
+
+    def test_unsafe_raw_symptom_is_dropped(self, kb):
+        # Names like "у вас вероятно гастрит" come from a misbehaving LLM
+        # extraction — they must NOT reach the PDF. validate_output drops them.
+        vm = build_view_model(
+            {"symptoms": [{"name": "у вас вероятно гастрит"}]},
+            "abcdefgh", kb,
+        )
+        assert vm["what_patient_described"] == []
+
+    def test_short_synonym_no_substring_false_positive(self, kb):
+        # Defends the _SUBSTRING_MIN_LEN >= 6 invariant. KB has short
+        # synonyms (e.g. "жар", "37", "зуд") — none of them may participate
+        # in substring matching. An unrelated input that incidentally
+        # contains such a short string must NOT be tagged with a medical
+        # canonical name. The fixture is intentionally not in KB so the
+        # only way it could be matched is via a bogus short-substring rule.
+        vm = build_view_model(
+            {"symptoms": [{"name": "поднос на кухне"}]},
+            "abcdefgh", kb,
+        )
+        # No KB match (correct), and the raw string passes validate_output
+        # → it surfaces as a raw fallback entry.
+        assert vm["what_patient_described"] == ["поднос на кухне"]
+
     def test_empty_or_non_dict_entries_are_skipped(self, kb):
         vm = build_view_model(
             {"symptoms": [
