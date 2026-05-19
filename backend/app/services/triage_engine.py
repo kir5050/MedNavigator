@@ -444,6 +444,16 @@ class TriageEngine:
         }
 
     async def generate_pdf_data(self, session_state: dict) -> dict:
+        """DEPRECATED since the PDF redesign (feat/pdf-redesign).
+
+        The PDF download path no longer calls this method. It produced
+        the LLM-enriched fields that the redesign drops from the PDF
+        surface (complaints_simple, complaints_medical, questions_for_doctor,
+        what_to_bring, timeline). The method is kept on disk for one
+        iteration so a rollback of the PDF path stays a small diff; it
+        will be removed in a follow-up chore PR once the redesign is
+        validated in production.
+        """
         symptoms_json = json.dumps(session_state.get("symptoms", []), ensure_ascii=False)
         triage_json = json.dumps(session_state.get("triage", {}), ensure_ascii=False)
         routing_json = json.dumps(session_state.get("routing", {}), ensure_ascii=False)

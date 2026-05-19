@@ -491,6 +491,29 @@ class TestChatClarificationFilter:
 # ---------------------------------------------------------------------------
 
 
+class TestLegalGuardrailsHardening:
+    """The legal guardrails block in prompts/templates.py was hardened in
+    feat/pdf-redesign to remove the yellow-zone example phrase and to
+    explicitly forbid causal-association framing. Guard against accidental
+    revert."""
+
+    def test_old_causal_association_example_removed(self):
+        from app.prompts.templates import LEGAL_GUARDRAILS
+        # The pre-redesign rule 3 actively taught the LLM to use this
+        # exact phrasing. It must not reappear in guardrails.
+        assert "ваши симптомы могут быть связаны с" not in LEGAL_GUARDRAILS
+
+    def test_new_rule_against_causal_hypotheses_present(self):
+        from app.prompts.templates import LEGAL_GUARDRAILS
+        assert "не выдвигай гипотезы о причинах симптомов" in LEGAL_GUARDRAILS
+        assert "системами или органами" in LEGAL_GUARDRAILS
+
+    def test_neutral_rule_3_phrasing_present(self):
+        from app.prompts.templates import LEGAL_GUARDRAILS
+        assert "рекомендуется обратиться к врачу" in LEGAL_GUARDRAILS
+        assert "лучше обсудить с врачом очно" in LEGAL_GUARDRAILS
+
+
 class TestFileAnalysisPrompt:
     """The inline prompt for file analysis (upload endpoint) must no longer
     request ICD codes / diagnoses verbatim. This is a regression test
@@ -524,7 +547,10 @@ class TestDocumentsSectionAlwaysDisclaimer:
         from app.pdf.generator import PDFGenerator
         assert PDFGenerator._build_documents_section({"uploaded_files": []}) == ""
 
-    def test_disclaimer_present_when_files_with_safe_analysis(self):
+    def test_disclaimer_and_filename_present_no_analysis_propagation(self):
+        # After PDF redesign, _build_documents_section never propagates
+        # the LLM-derived analysis text into the PDF. Only the filename
+        # and the always-on disclaimer are rendered.
         from app.pdf.generator import PDFGenerator
         html = PDFGenerator._build_documents_section({
             "uploaded_files": [
@@ -534,7 +560,10 @@ class TestDocumentsSectionAlwaysDisclaimer:
         assert "docs-disclaimer" in html
         assert "врач увидит оригиналы на приёме" in html
         assert "a.pdf" in html
-        assert "документ содержит данные анализов" in html
+        # Analysis text MUST NOT reach the PDF — the redesign treats it
+        # as out-of-scope content (kept in state, surfaced via other
+        # channels if ever needed, never rendered to PDF).
+        assert "документ содержит данные анализов" not in html
 
     def test_disclaimer_present_when_files_have_empty_analysis(self):
         from app.pdf.generator import PDFGenerator
@@ -548,20 +577,24 @@ class TestDocumentsSectionAlwaysDisclaimer:
         assert "docs-disclaimer" in html
         assert "b.jpg" in html
 
-    def test_no_analysis_paragraph_when_analysis_empty(self):
+    def test_no_analysis_paragraph_regardless_of_analysis_state(self):
+        # After redesign, the per-file card is just <div class="uploaded-file">
+        # with the filename — never a <p> with analysis content, regardless
+        # of whether analysis was populated or empty in the input.
         from app.pdf.generator import PDFGenerator
         html = PDFGenerator._build_documents_section({
             "uploaded_files": [
                 {"filename": "c.pdf", "analysis": ""},
             ],
         })
-        # Filename in <h3>, but no <p> with analysis content
-        assert "<h3>c.pdf</h3>" in html
-        # No paragraph paragraph after the filename card
-        # (presence of any '<p>' inside the per-file card)
-        per_file_card_start = html.index("<h3>c.pdf</h3>")
-        card_remainder = html[per_file_card_start:]
-        assert "<p>" not in card_remainder.split("</div>")[0]
+        assert '<div class="uploaded-file">c.pdf</div>' in html
+        # Disclaimer paragraph is allowed (above the file list); per-file
+        # cards must not contain their own <p> elements.
+        file_card_start = html.index('<div class="uploaded-file">')
+        per_card = html[file_card_start:]
+        # The card ends with </div>; before that closer there should be no <p>.
+        end = per_card.index("</div>") + len("</div>")
+        assert "<p>" not in per_card[:end]
 
 
 # ---------------------------------------------------------------------------

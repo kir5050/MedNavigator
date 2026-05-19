@@ -1,100 +1,50 @@
-from datetime import datetime, timezone
+"""PDF renderer for the "маршрутный лист".
+
+Reads a pre-assembled view model (see ``app.pdf.view_model``) and emits
+either the routine routing PDF or the crisis PDF. No LLM calls. No
+session-state reads beyond what the view model already carries.
+
+Two top-level branches:
+- routine (``is_crisis_only=False``): static "next step" card + KB-derived
+  patient-described list + static prep/questions/urgent-care + optional
+  uploaded files. No raw LLM reason, no per-specialist preparation,
+  no causal explanations, no "Описание для врача" section.
+- crisis (``is_crisis_only=True``, set by PR #8): crisis banner with the
+  hotline + filtered conversation history + red-flags section. PR #11
+  visual contract is preserved.
+
+The old ``_build_symptoms_section`` and ``_build_specialists_section``
+have been removed — they have no caller in the new layout. The old
+``URGENCY_MAP`` (label + colour tuple) is also gone; urgency labelling
+now lives in ``view_model.URGENCY_TIMEFRAME_MAP`` and is rendered as
+text in the primary-route card.
+"""
+
 from html import escape
 
 from weasyprint import HTML
 
 
 class PDFGenerator:
-    URGENCY_MAP = {
-        "low": ("Плановый визит", "#10B981", "#D1FAE5"),
-        "medium": ("Рекомендуется записаться в ближайшие 1-2 дня", "#F59E0B", "#FEF3C7"),
-        "high": ("Рекомендуется обратиться к врачу сегодня", "#EF4444", "#FEE2E2"),
-        "emergency": ("ТРЕБУЕТСЯ ЭКСТРЕННАЯ ПОМОЩЬ — позвоните 103", "#DC2626", "#FEE2E2"),
-    }
-
     @staticmethod
-    def generate(data: dict, session_id: str) -> bytes:
-        html_content = PDFGenerator._build_html(data, session_id)
+    def generate(view_model: dict, session_id: str) -> bytes:
+        html_content = PDFGenerator._build_html(view_model, session_id)
         return HTML(string=html_content).write_pdf()
 
     @staticmethod
-    def _build_html(data: dict, session_id: str) -> str:
-        now = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M UTC")
-        urgency = data.get("urgency", "medium")
-        urgency_text, urgency_color, urgency_bg = PDFGenerator.URGENCY_MAP.get(
-            urgency, PDFGenerator.URGENCY_MAP["medium"]
-        )
-
-        # Crisis-only sessions (suicide/self-harm trigger fired) get a different
-        # urgency block and skip routine intake-derived sections. A routine
-        # "schedule a visit in 1-2 days" banner next to a hotline number is
-        # cognitively dissonant and potentially harmful for a patient in crisis.
-        is_crisis_only = bool(data.get("is_crisis_only", False))
+    def _build_html(view_model: dict, session_id: str) -> str:
+        is_crisis_only = bool(view_model.get("is_crisis_only", False))
 
         if is_crisis_only:
-            urgency_block = PDFGenerator._build_crisis_banner()
+            body_content = PDFGenerator._build_crisis_body(view_model)
         else:
-            urgency_block = (
-                f'<div class="urgency-box">'
-                f'<strong>{escape(urgency_text)}</strong>'
-                f'</div>'
-            )
+            body_content = PDFGenerator._build_routine_body(view_model)
 
-        sections = []
+        now = escape(view_model.get("generated_at", ""))
+        sid_short = escape(view_model.get("session_id_short", session_id[:8]))
+        disclaimer_text = escape(view_model.get("disclaimer", ""))
 
-        # --- 1. Symptoms / complaints (skipped for crisis-only — empty intake) ---
-        if not is_crisis_only:
-            symptoms_section = PDFGenerator._build_symptoms_section(data)
-            if symptoms_section:
-                sections.append(symptoms_section)
-
-        # --- 2. User's answers from conversation (kept for context) ---
-        history_section = PDFGenerator._build_history_section(data)
-        if history_section:
-            sections.append(history_section)
-
-        # --- 3. Uploaded document analyses (kept; may carry pre-crisis context) ---
-        docs_section = PDFGenerator._build_documents_section(data)
-        if docs_section:
-            sections.append(docs_section)
-
-        # --- 4. Specialists (skipped for crisis-only — no routing was run) ---
-        if not is_crisis_only:
-            specialists_section = PDFGenerator._build_specialists_section(data)
-            if specialists_section:
-                sections.append(specialists_section)
-
-        # --- 5. Routing explanation (skipped for crisis-only).
-        # The existing `if explanation` gate already swallows the empty default
-        # for crisis sessions; the not-is_crisis_only check is defence in depth
-        # in case future LLM logic starts populating routing_explanation for
-        # crisis sessions too.
-        explanation = data.get("routing_explanation", "")
-        if explanation and not is_crisis_only:
-            sections.append(
-                f'<h2>Пояснение</h2><p>{escape(explanation)}</p>'
-            )
-
-        # --- 6. Questions for doctor (skipped for crisis-only) ---
-        questions = data.get("questions_for_doctor", [])
-        if questions and not is_crisis_only:
-            items = "".join(f"<li>{escape(str(q))}</li>" for q in questions)
-            sections.append(f"<h2>Вопросы для врача</h2><ol>{items}</ol>")
-
-        # --- 7. What to bring (skipped for crisis-only) ---
-        what_to_bring = data.get("what_to_bring", [])
-        if what_to_bring and not is_crisis_only:
-            items = "".join(f"<li>{escape(str(item))}</li>" for item in what_to_bring)
-            sections.append(f"<h2>Что взять с собой</h2><ul>{items}</ul>")
-
-        # --- 8. Red flags (kept; for crisis sessions this is the hotline section) ---
-        red_flags_section = PDFGenerator._build_red_flags_section(data)
-        if red_flags_section:
-            sections.append(red_flags_section)
-
-        body_content = "\n\n".join(sections)
-
-        html_content = f"""<!DOCTYPE html>
+        return f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -125,19 +75,13 @@ class PDFGenerator:
         font-size: 18pt;
     }}
     .header .subtitle {{
+        color: #475569;
+        font-size: 11pt;
+        margin: 4px 0 6px 0;
+    }}
+    .header .meta {{
         color: #64748B;
         font-size: 10pt;
-    }}
-    .urgency-box {{
-        background: {urgency_bg};
-        border-left: 5px solid {urgency_color};
-        padding: 12px 16px;
-        margin: 16px 0 24px 0;
-        border-radius: 0 8px 8px 0;
-    }}
-    .urgency-box strong {{
-        color: {urgency_color};
-        font-size: 13pt;
     }}
     h2 {{
         color: #1E40AF;
@@ -146,11 +90,6 @@ class PDFGenerator:
         padding-bottom: 6px;
         margin-top: 24px;
         margin-bottom: 12px;
-    }}
-    h3 {{
-        color: #1E3A5F;
-        font-size: 11pt;
-        margin: 12px 0 4px 0;
     }}
     p {{
         margin: 4px 0 8px 0;
@@ -162,31 +101,47 @@ class PDFGenerator:
     li {{
         margin-bottom: 4px;
     }}
-    .specialist-card {{
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
+    .primary-route {{
+        background: #EFF6FF;
+        border: 1px solid #BFDBFE;
         border-radius: 8px;
-        padding: 12px 16px;
-        margin-bottom: 12px;
+        padding: 16px 18px;
+        margin: 12px 0 20px 0;
         page-break-inside: avoid;
     }}
-    .specialist-card h3 {{
-        color: #2563EB;
+    .primary-route .specialty {{
+        color: #1E40AF;
+        font-size: 16pt;
+        font-weight: 700;
         margin: 0 0 4px 0;
+        display: block;
     }}
-    .specialist-card .reason {{
-        color: #475569;
-        font-size: 10pt;
-        margin-bottom: 8px;
-    }}
-    .specialist-card .prep-title {{
+    .primary-route .urgency-label {{
+        color: #1E293B;
+        font-size: 11pt;
         font-weight: 600;
-        font-size: 10pt;
-        margin-bottom: 4px;
+        margin: 0 0 10px 0;
     }}
-    .specialist-card ul {{
-        margin: 0;
+    .primary-route .one-liner {{
+        color: #334155;
         font-size: 10pt;
+        margin: 0;
+    }}
+    .secondary-routes-text {{
+        color: #334155;
+        margin: 6px 0 12px 0;
+    }}
+    .urgent-care {{
+        background: #FEF3C7;
+        border-left: 4px solid #F59E0B;
+        padding: 12px 16px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        page-break-inside: avoid;
+    }}
+    .urgent-care p {{
+        margin: 0;
+        color: #1E293B;
     }}
     .red-flags {{
         background: #FEE2E2;
@@ -237,16 +192,6 @@ class PDFGenerator:
         color: #475569;
         margin-top: 10px;
     }}
-    .symptom-tag {{
-        display: inline-block;
-        background: #EFF6FF;
-        border: 1px solid #BFDBFE;
-        border-radius: 6px;
-        padding: 2px 10px;
-        margin: 2px 4px 2px 0;
-        font-size: 10pt;
-        color: #1E40AF;
-    }}
     .history-item {{
         margin-bottom: 6px;
         font-size: 10pt;
@@ -264,18 +209,24 @@ class PDFGenerator:
         font-style: italic;
         margin: 4px 0 12px 0;
     }}
+    .uploaded-file {{
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 8px 14px;
+        margin-bottom: 8px;
+        font-size: 10pt;
+        color: #334155;
+    }}
     .disclaimer {{
-        margin-top: 32px;
-        padding: 12px 16px;
+        margin-top: 24px;
+        padding: 10px 14px;
         background: #F1F5F9;
         border: 1px solid #CBD5E1;
         border-radius: 8px;
         font-size: 9pt;
-        color: #64748B;
-        line-height: 1.5;
-    }}
-    .disclaimer strong {{
         color: #475569;
+        page-break-inside: avoid;
     }}
     .footer {{
         margin-top: 16px;
@@ -288,21 +239,14 @@ class PDFGenerator:
 <body>
 
 <div class="header">
-    <h1>MedNavigator — Информационная выписка</h1>
-    <div class="subtitle">Дата формирования: {now} | Сессия: {session_id[:8]}</div>
+    <h1>MedNavigator — маршрутный лист</h1>
+    <div class="subtitle">Помогает подготовиться к визиту и выбрать следующий шаг</div>
+    <div class="meta">Дата формирования: {now} · Сессия: {sid_short}</div>
 </div>
-
-{urgency_block}
 
 {body_content}
 
-<div class="disclaimer">
-    <strong>Важно:</strong> Данный документ носит исключительно информационный и справочный характер.
-    Он НЕ является медицинским заключением, диагнозом или назначением лечения.
-    Информация подготовлена автоматически на основе описанных вами симптомов и предназначена
-    для подготовки к визиту к врачу. Обязательно проконсультируйтесь с квалифицированным
-    специалистом для постановки диагноза и назначения лечения.
-</div>
+<div class="disclaimer">{disclaimer_text}</div>
 
 <div class="footer">
     MedNavigator — информационный сервис медицинской маршрутизации | mednavigator.ru
@@ -311,7 +255,121 @@ class PDFGenerator:
 </body>
 </html>"""
 
-        return html_content
+    # ------------------------------------------------------------------
+    # Routine (non-crisis) body
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_routine_body(view_model: dict) -> str:
+        sections: list[str] = []
+
+        primary = PDFGenerator._build_primary_route(view_model)
+        if primary:
+            sections.append(primary)
+
+        described = PDFGenerator._build_what_patient_described(view_model)
+        if described:
+            sections.append(described)
+
+        secondary = PDFGenerator._build_secondary_routes(view_model)
+        if secondary:
+            sections.append(secondary)
+
+        sections.append(PDFGenerator._build_preparation_checklist(view_model))
+        sections.append(PDFGenerator._build_questions(view_model))
+        sections.append(PDFGenerator._build_urgent_care(view_model))
+
+        docs = PDFGenerator._build_documents_section(view_model)
+        if docs:
+            sections.append(docs)
+
+        return "\n\n".join(sections)
+
+    @staticmethod
+    def _build_primary_route(view_model: dict) -> str:
+        primary = view_model.get("primary_route")
+        if not primary:
+            return ""
+        urgency_label = view_model.get("urgency", {}).get("label", "")
+        return (
+            '<h2>Рекомендуемый следующий шаг</h2>'
+            '<div class="primary-route">'
+            f'<span class="specialty">{escape(primary["specialty"])}</span>'
+            f'<div class="urgency-label">{escape(urgency_label)}</div>'
+            f'<p class="one-liner">{escape(primary["safe_one_liner"])}</p>'
+            '</div>'
+        )
+
+    @staticmethod
+    def _build_what_patient_described(view_model: dict) -> str:
+        items = view_model.get("what_patient_described") or []
+        if not items:
+            return ""
+        bullets = "".join(f"<li>{escape(item)}</li>" for item in items)
+        return f"<h2>Что вы описали</h2><ul>{bullets}</ul>"
+
+    @staticmethod
+    def _build_secondary_routes(view_model: dict) -> str:
+        secondary = view_model.get("secondary_routes") or []
+        if not secondary:
+            return ""
+        names = [escape(s["specialty"]) for s in secondary if isinstance(s, dict) and s.get("specialty")]
+        if not names:
+            return ""
+        if len(names) == 1:
+            who = names[0]
+        else:
+            who = " или ".join(names)
+        return (
+            '<h2>Также может пригодиться</h2>'
+            f'<p class="secondary-routes-text">'
+            f'В зависимости от очной оценки врач может направить к другому специалисту, '
+            f'например к {who}.'
+            '</p>'
+        )
+
+    @staticmethod
+    def _build_preparation_checklist(view_model: dict) -> str:
+        items = view_model.get("preparation_checklist") or []
+        bullets = "".join(f"<li>{escape(item)}</li>" for item in items)
+        return f"<h2>Подготовка к визиту</h2><ul>{bullets}</ul>"
+
+    @staticmethod
+    def _build_questions(view_model: dict) -> str:
+        items = view_model.get("questions_for_doctor") or []
+        bullets = "".join(f"<li>{escape(item)}</li>" for item in items)
+        return f"<h2>Возможные вопросы врачу</h2><ol>{bullets}</ol>"
+
+    @staticmethod
+    def _build_urgent_care(view_model: dict) -> str:
+        block = view_model.get("urgent_care_block", "")
+        return (
+            '<h2>Когда нужно действовать срочнее</h2>'
+            f'<div class="urgent-care"><p>{escape(block)}</p></div>'
+        )
+
+    # ------------------------------------------------------------------
+    # Crisis body (PR #11 contract preserved)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_crisis_body(view_model: dict) -> str:
+        sections: list[str] = []
+        sections.append(PDFGenerator._build_crisis_banner())
+
+        history = PDFGenerator._build_history_section(view_model)
+        if history:
+            sections.append(history)
+
+        docs = PDFGenerator._build_documents_section(view_model)
+        if docs:
+            sections.append(docs)
+
+        red_flags_section = PDFGenerator._build_red_flags_section(view_model)
+        if red_flags_section:
+            sections.append(red_flags_section)
+
+        return "\n\n".join(sections)
 
     @staticmethod
     def _build_crisis_banner() -> str:
@@ -328,52 +386,9 @@ class PDFGenerator:
         )
 
     @staticmethod
-    def _build_symptoms_section(data: dict) -> str:
-        complaints_simple = data.get("complaints_simple", "")
-        complaints_medical = data.get("complaints_medical", "")
-        symptoms = data.get("symptoms_list", [])
-
-        if not complaints_simple and not symptoms:
-            return ""
-
-        parts = ['<h2>Жалобы и симптомы</h2>']
-
-        if complaints_simple:
-            parts.append(f'<p>{escape(complaints_simple)}</p>')
-
-        if symptoms:
-            tags = ""
-            for s in symptoms:
-                if isinstance(s, dict):
-                    name = s.get("name", "")
-                    area = s.get("area", "")
-                    duration = s.get("duration", "")
-                    detail = name
-                    extras = []
-                    if area:
-                        extras.append(area)
-                    if duration:
-                        extras.append(duration)
-                    if extras:
-                        detail += f" ({', '.join(extras)})"
-                else:
-                    detail = str(s)
-                if detail:
-                    tags += f'<span class="symptom-tag">{escape(detail)}</span> '
-            if tags:
-                parts.append(f'<p>{tags}</p>')
-
-        if complaints_medical:
-            parts.append(
-                f'<h2>Описание для врача</h2>'
-                f'<p><em>{escape(complaints_medical)}</em></p>'
-            )
-
-        return "\n".join(parts)
-
-    @staticmethod
-    def _build_history_section(data: dict) -> str:
-        history_lines = data.get("history_lines", [])
+    def _build_history_section(view_model: dict) -> str:
+        """Used only in the crisis branch. Iterates already-filtered history."""
+        history_lines = view_model.get("history_lines", [])
         if not history_lines:
             return ""
 
@@ -389,26 +404,41 @@ class PDFGenerator:
         if not qa_pairs:
             return ""
 
-        items = ""
-        for label, text in qa_pairs:
-            items += (
-                f'<div class="history-item">'
-                f'<span class="label">{escape(label)}:</span> '
-                f'<span class="text">{escape(text)}</span>'
-                f'</div>'
-            )
-
+        items = "".join(
+            f'<div class="history-item">'
+            f'<span class="label">{escape(label)}:</span> '
+            f'<span class="text">{escape(text)}</span>'
+            f'</div>'
+            for label, text in qa_pairs
+        )
         return f"<h2>Ход опроса</h2>{items}"
 
     @staticmethod
-    def _build_documents_section(data: dict) -> str:
-        uploaded_files = data.get("uploaded_files", [])
+    def _build_red_flags_section(view_model: dict) -> str:
+        """Used only in the crisis branch. View model populates red_flags
+        only when is_crisis_only is True, so this is effectively a no-op
+        for routine PDFs."""
+        red_flags = view_model.get("red_flags", [])
+        if not red_flags:
+            return ""
+        items = "".join(f"<li>{escape(str(rf))}</li>" for rf in red_flags)
+        return (
+            '<div class="red-flags">'
+            '<h2>Внимание: тревожные признаки</h2>'
+            f'<ul>{items}</ul>'
+            '<p><strong>При наличии этих симптомов рекомендуется немедленно обратиться за медицинской помощью.</strong></p>'
+            '</div>'
+        )
+
+    # ------------------------------------------------------------------
+    # Uploaded files — filename only, always-on disclaimer
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_documents_section(view_model: dict) -> str:
+        uploaded_files = view_model.get("uploaded_files", [])
         if not uploaded_files:
             return ""
-
-        # Always-on disclaimer when any document was uploaded — independent of
-        # whether the analysis text survived the output_safety filter.
-        # Document content is referenced, never reproduced verbatim.
         parts = [
             '<h2>Загруженные документы</h2>',
             '<p class="docs-disclaimer">'
@@ -419,61 +449,8 @@ class PDFGenerator:
         for f in uploaded_files:
             if not isinstance(f, dict):
                 continue
-            filename = escape(f.get("filename", "файл"))
-            analysis = (f.get("analysis") or "").strip()
-            if analysis:
-                parts.append(
-                    f'<div class="specialist-card">'
-                    f'<h3>{filename}</h3>'
-                    f'<p>{escape(analysis)}</p>'
-                    f'</div>'
-                )
-            else:
-                # Filename only — preserves the fact of upload without leaking
-                # unfiltered / empty analysis text.
-                parts.append(
-                    f'<div class="specialist-card"><h3>{filename}</h3></div>'
-                )
-        return "\n".join(parts)
-
-    @staticmethod
-    def _build_specialists_section(data: dict) -> str:
-        specialists = data.get("specialists", [])
-        if not specialists:
-            return ""
-
-        cards = ""
-        for i, spec in enumerate(specialists, 1):
-            if not isinstance(spec, dict):
+            filename = (f.get("filename") or "").strip()
+            if not filename:
                 continue
-            name = escape(spec.get("specialty", "Специалист"))
-            reason = spec.get("reason", "")
-            prep = spec.get("preparation", [])
-
-            card = f'<div class="specialist-card"><h3>{i}. {name}</h3>'
-            if reason:
-                card += f'<p class="reason">{escape(reason)}</p>'
-            if prep:
-                card += '<p class="prep-title">Подготовка к визиту:</p><ul>'
-                for item in prep:
-                    card += f"<li>{escape(str(item))}</li>"
-                card += "</ul>"
-            card += "</div>"
-            cards += card
-
-        return f"<h2>Рекомендуемые специалисты</h2>{cards}"
-
-    @staticmethod
-    def _build_red_flags_section(data: dict) -> str:
-        red_flags = data.get("red_flags", [])
-        if not red_flags:
-            return ""
-
-        items = "".join(f"<li>{escape(str(rf))}</li>" for rf in red_flags)
-        return (
-            '<div class="red-flags">'
-            '<h2>Внимание: тревожные признаки</h2>'
-            f'<ul>{items}</ul>'
-            '<p><strong>При наличии этих симптомов рекомендуется немедленно обратиться за медицинской помощью.</strong></p>'
-            '</div>'
-        )
+            parts.append(f'<div class="uploaded-file">{escape(filename)}</div>')
+        return "\n".join(parts)

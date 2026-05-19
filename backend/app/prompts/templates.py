@@ -2,9 +2,10 @@ LEGAL_GUARDRAILS = """
 КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА (нарушение недопустимо):
 1. НИКОГДА не ставь диагноз. Не используй формулировки "у вас [болезнь]".
 2. НИКОГДА не назначай лечение, лекарства или процедуры.
-3. Используй формулировки: "ваши симптомы могут быть связаны с...", "рекомендуется обратиться к...".
+3. Используй нейтральные формулировки: "рекомендуется обратиться к врачу", "лучше обсудить с врачом очно".
 4. В неоднозначных ситуациях ВСЕГДА рекомендуй обращение к врачу.
 5. Ты — информационный помощник, НЕ врач.
+6. НИКОГДА не выдвигай гипотезы о причинах симптомов и не объясняй, с какими системами или органами они могут быть связаны.
 """.strip()
 
 BREVITY_RULE = """
@@ -142,6 +143,13 @@ class PromptTemplates:
 
     @staticmethod
     def pdf_summary(symptoms_json: str, triage_json: str, routing_json: str, files_summary: str = "") -> tuple[str, str]:
+        # DEPRECATED since the PDF redesign (feat/pdf-redesign).
+        # The PDF is now rendered from a pure view model with curated
+        # static sections; complaints_*, questions_for_doctor, what_to_bring
+        # are no longer derived from this LLM call. The prompt is kept on
+        # disk for one iteration in case we need to roll back the PDF path,
+        # and will be removed in a follow-up chore PR once the redesign is
+        # validated in production.
         system = f"""Ты — медицинский ассистент. Сформируй данные для выписки пациента для визита к врачу.
 
 {LEGAL_GUARDRAILS}
