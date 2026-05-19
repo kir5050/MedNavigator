@@ -1,0 +1,604 @@
+# Output safety patterns — strings that must not appear in user-facing LLM text.
+# Loaded once at startup; no hot reload. Changes require backend restart.
+#
+# match_type:
+#   substring  — case-insensitive substring match
+#   word       — case-insensitive, requires word boundary (\b on both sides)
+#   regex      — raw Python regex, case-insensitive flag applied
+#
+# POLICY NOTE: source-attributed diagnosis history is allowed.
+# The word "диагноз" is NOT blocked globally. We block formulations where
+# AI assigns a diagnosis to the patient, not factual references to prior
+# medical history.
+
+output_safety:
+
+  diagnoses:
+    description: |
+      Formulations that assign a diagnosis to the patient. We block the
+      FORMULATION (claim of diagnosis), not disease names themselves —
+      patients may legitimately mention diseases they already have, and
+      LLM may legitimately reference them in clarifications.
+    match_type: substring
+    patterns:
+      - id: dx_002
+        pattern: "у вас диагноз"
+      - id: dx_003
+        pattern: "ваш диагноз"
+      - id: dx_004
+        pattern: "вероятно, у вас"
+      - id: dx_005
+        pattern: "вероятно у вас"
+      - id: dx_006
+        pattern: "по всей видимости, у вас"
+      - id: dx_007
+        pattern: "по всей видимости у вас"
+      - id: dx_008
+        pattern: "скорее всего, у вас"
+      - id: dx_009
+        pattern: "скорее всего у вас"
+      - id: dx_011
+        pattern: "это похоже на"
+      - id: dx_012
+        pattern: "это напоминает"
+      - id: dx_013
+        pattern: "судя по симптомам, это"
+      - id: dx_014
+        pattern: "судя по симптомам это"
+      - id: dx_015
+        pattern: "можно предположить"
+      - id: dx_016
+        pattern: "предположительный диагноз"
+      - id: dx_017
+        pattern: "ваше состояние называется"
+      - id: dx_018
+        pattern: "по описанию это"
+      - id: dx_019
+        pattern: "выставить диагноз"
+      - id: dx_020
+        pattern: "поставить диагноз"
+      - id: dx_021
+        pattern: "ставится диагноз"
+      - id: dx_022
+        pattern: "клиническая картина характерна для"
+      - id: dx_024
+        pattern: "указывает на наличие"
+      - id: dx_025
+        pattern: "указывают на наличие"
+      - id: dx_026
+        pattern: "связано с заболеванием"
+      - id: dx_027
+        pattern: "признаки заболевания"
+      - id: dx_028
+        pattern: "это признак"
+      - id: dx_029
+        pattern: "это признаки"
+      - id: dx_030
+        pattern: "проявление болезни"
+      - id: dx_032
+        pattern: "у вас наблюдается"
+      - id: dx_033
+        pattern: "у вас отмечается"
+      - id: dx_034
+        pattern: "у вас развивается"
+      - id: dx_035
+        pattern: "у вас развилось"
+      - id: dx_036
+        pattern: "у вас имеется"
+      - id: dx_037
+        pattern: "у вас присутствует"
+      - id: dx_038
+        pattern: "у вас может быть"
+      - id: dx_039
+        pattern: "возможно, у вас"
+      - id: dx_040
+        pattern: "возможно у вас"
+      - id: dx_041
+        pattern: "похоже, у вас"
+      - id: dx_042
+        pattern: "похоже у вас"
+      - id: dx_043
+        pattern: "есть подозрение на"
+      - id: dx_044
+        pattern: "подозрение на"
+      - id: dx_045
+        pattern: "симптомы указывают на"
+      - id: dx_046
+        pattern: "жалобы указывают на"
+      - id: dx_047
+        pattern: "может свидетельствовать о"
+      - id: dx_048
+        pattern: "свидетельствует о"
+      - id: dx_049
+        pattern: "у вас, вероятно"
+      - id: dx_050
+        pattern: "у вас вероятно"
+      - id: dx_051
+        pattern: "у вас, возможно"
+      - id: dx_052
+        pattern: "у вас возможно"
+      - id: dx_053
+        pattern: "у вас, скорее всего"
+      - id: dx_054
+        pattern: "у вас скорее всего"
+      - id: dx_055
+        pattern: "похоже, что у вас"
+      - id: dx_056
+        pattern: "похоже что у вас"
+
+  medications:
+    description: |
+      Common OTC/Rx medication names and trade names frequently encountered
+      in Russian-language patient-facing medical conversations.
+      Stem-based regex with \w* suffix handles Russian noun cases automatically
+      (парацетамол / парацетамола / парацетамолу / парацетамолом).
+    match_type: regex
+    patterns:
+      # Pain relief / NSAID / antipyretics
+      - id: med_001
+        pattern: '\bпарацетамол\w*\b'
+      - id: med_002
+        pattern: '\bибупрофен\w*\b'
+      - id: med_003
+        pattern: '\bацетилсалицилов\w+\s+кислот\w+\b'
+      - id: med_004
+        pattern: '\bаспирин\w*\b'
+      - id: med_005
+        pattern: '\bанальгин\w*\b'
+      - id: med_006
+        pattern: '\bметамизол\w*\b'
+      - id: med_007
+        pattern: '\bнурофен\w*\b'
+      - id: med_008
+        pattern: '\bцитрамон\w*\b'
+      - id: med_009
+        pattern: '\bтемпалгин\w*\b'
+      - id: med_010
+        pattern: '\bпанадол\w*\b'
+      - id: med_011
+        pattern: '\bнайз\w*\b'
+      - id: med_012
+        pattern: '\bнимесулид\w*\b'
+      - id: med_013
+        pattern: '\bкеторол\w*\b'
+      - id: med_014
+        pattern: '\bкетанов\w*\b'
+      - id: med_015
+        pattern: '\bкеторолак\w*\b'
+      - id: med_016
+        pattern: '\bдиклофенак\w*\b'
+      - id: med_017
+        pattern: '\bмелоксикам\w*\b'
+      - id: med_018
+        pattern: '\bмовалис\w*\b'
+      - id: med_019
+        pattern: '\bкетопрофен\w*\b'
+
+      # Spasmolytics
+      - id: med_020
+        pattern: '\bно[-\s]?шп\w*\b'
+      - id: med_021
+        pattern: '\bдротаверин\w*\b'
+      - id: med_022
+        pattern: '\bспазмалгон\w*\b'
+      - id: med_023
+        pattern: '\bпапаверин\w*\b'
+
+      # GI / sorbents
+      - id: med_030
+        pattern: '\bактивированн\w+\s+уг(?:ол\w*|л\w*)\b'
+      - id: med_031
+        pattern: '\bсмект\w*\b'
+      - id: med_032
+        pattern: '\bэнтеросгел\w*\b'
+      - id: med_033
+        pattern: '\bполисорб\w*\b'
+      - id: med_034
+        pattern: '\bрегидрон\w*\b'
+      - id: med_035
+        pattern: '\bмезим\w*\b'
+      - id: med_036
+        pattern: '\bфестал\w*\b'
+      - id: med_037
+        pattern: '\bкреон\w*\b'
+      - id: med_038
+        pattern: '\bпанкреатин\w*\b'
+      - id: med_039
+        pattern: '\bомез\w*\b'
+      - id: med_040
+        pattern: '\bомепразол\w*\b'
+      - id: med_041
+        pattern: '\bнольпаз\w*\b'
+      - id: med_042
+        pattern: '\bпантопразол\w*\b'
+      - id: med_043
+        pattern: '\bранитидин\w*\b'
+      - id: med_044
+        pattern: '\bлоперамид\w*\b'
+      - id: med_045
+        pattern: '\bимодиум\w*\b'
+      - id: med_046
+        pattern: '\bмаалокс\w*\b'
+      - id: med_047
+        pattern: '\bгевискон\w*\b'
+      - id: med_048
+        pattern: '\bренни\w*\b'
+      - id: med_049
+        pattern: '\bальмагел\w*\b'
+      - id: med_050
+        pattern: '\bмотилиум\w*\b'
+      - id: med_051
+        pattern: '\bдомперидон\w*\b'
+      - id: med_052
+        pattern: '\bцерукал\w*\b'
+      - id: med_053
+        pattern: '\bметоклопрамид\w*\b'
+      - id: med_054
+        pattern: '\bлинекс\w*\b'
+      - id: med_055
+        pattern: '\bбифиформ\w*\b'
+
+      # Cold / ОРВИ
+      - id: med_060
+        pattern: '\bтерафлю\w*\b'
+      - id: med_061
+        pattern: '\bколдрекс\w*\b'
+      - id: med_062
+        pattern: '\bринз\w*\b'
+      - id: med_063
+        pattern: '\bколдакт\w*\b'
+      - id: med_065
+        pattern: '\bацц\w*\b'
+      - id: med_066
+        pattern: '\bацетилцистеин\w*\b'
+      - id: med_067
+        pattern: '\bлазолван\w*\b'
+      - id: med_068
+        pattern: '\bамброксол\w*\b'
+      - id: med_069
+        pattern: '\bамбробене\w*\b'
+      - id: med_070
+        pattern: '\bбромгексин\w*\b'
+      - id: med_071
+        pattern: '\bмукалтин\w*\b'
+      - id: med_072
+        pattern: '\bстрепсилс\w*\b'
+      - id: med_073
+        pattern: '\bгексорал\w*\b'
+      - id: med_074
+        pattern: '\bлизобакт\w*\b'
+      - id: med_075
+        pattern: '\bсептолете\w*\b'
+      - id: med_076
+        pattern: '\bфарингосепт\w*\b'
+      - id: med_077
+        pattern: '\bоциллококцинум\w*\b'
+      - id: med_078
+        pattern: '\bафлубин\w*\b'
+      - id: med_079
+        pattern: '\bарбидол\w*\b'
+      - id: med_080
+        pattern: '\bингавирин\w*\b'
+      - id: med_081
+        pattern: '\bкагоцел\w*\b'
+      - id: med_082
+        pattern: '\bремантадин\w*\b'
+      - id: med_083
+        pattern: '\bосельтамивир\w*\b'
+      - id: med_084
+        pattern: '\bтамифлю\w*\b'
+
+      # Nasal / decongestants
+      - id: med_085
+        pattern: '\bназивин\w*\b'
+      - id: med_086
+        pattern: '\bнафтизин\w*\b'
+      - id: med_087
+        pattern: '\bксилометазолин\w*\b'
+      - id: med_088
+        pattern: '\bснуп\w*\b'
+      - id: med_089
+        pattern: '\bтизин\w*\b'
+      - id: med_099
+        pattern: '\bксилен\w*\b'
+      - id: med_100
+        pattern: '\bотривин\w*\b'
+      - id: med_101
+        pattern: '\bвиброцил\w*\b'
+
+      # Antihistamines
+      - id: med_090
+        pattern: '\bлоратадин\w*\b'
+      - id: med_091
+        pattern: '\bцетиризин\w*\b'
+      - id: med_092
+        pattern: '\bзодак\w*\b'
+      - id: med_093
+        pattern: '\bзиртек\w*\b'
+      - id: med_094
+        pattern: '\bсупрастин\w*\b'
+      - id: med_095
+        pattern: '\bтавегил\w*\b'
+      - id: med_096
+        pattern: '\bкларитин\w*\b'
+      - id: med_097
+        pattern: '\bэриус\w*\b'
+      - id: med_098
+        pattern: '\bфенкарол\w*\b'
+
+      # Antiseptics
+      - id: med_110
+        pattern: '\bхлоргексидин\w*\b'
+      - id: med_111
+        pattern: '\bмирамистин\w*\b'
+      - id: med_112
+        pattern: '\bпереки\w+\s+водород\w*\b'
+      - id: med_113
+        pattern: '\bйод\w*\b'
+      - id: med_114
+        pattern: '\bзел[её]нк\w*\b'
+      - id: med_115
+        pattern: '\bбриллиантов\w+\s+зел[её]н\w*\b'
+
+      # Topical / wound care
+      - id: med_116
+        pattern: '\bлевомеколь\w*\b'
+      - id: med_117
+        pattern: '\bбепантен\w*\b'
+      - id: med_118
+        pattern: '\bпантенол\w*\b'
+
+      # Antibiotics (Rx)
+      - id: med_130
+        pattern: '\bамоксициллин\w*\b'
+      - id: med_131
+        pattern: '\bаугментин\w*\b'
+      - id: med_132
+        pattern: '\bфлемоксин\w*\b'
+      - id: med_133
+        pattern: '\bамоксиклав\w*\b'
+      - id: med_134
+        pattern: '\bазитромицин\w*\b'
+      - id: med_135
+        pattern: '\bсумамед\w*\b'
+      - id: med_136
+        pattern: '\bкларитромицин\w*\b'
+      - id: med_137
+        pattern: '\bципрофлоксацин\w*\b'
+      - id: med_138
+        pattern: '\bцифран\w*\b'
+      - id: med_139
+        pattern: '\bлевофлоксацин\w*\b'
+      - id: med_140
+        pattern: '\bдоксициклин\w*\b'
+      - id: med_141
+        pattern: '\bцефтриаксон\w*\b'
+      - id: med_142
+        pattern: '\bметронидазол\w*\b'
+      - id: med_143
+        pattern: '\bтрихопол\w*\b'
+
+      # Corticosteroids (Rx)
+      - id: med_160
+        pattern: '\bпреднизолон\w*\b'
+      - id: med_161
+        pattern: '\bдексаметазон\w*\b'
+      - id: med_162
+        pattern: '\bгидрокортизон\w*\b'
+
+      # Cardiovascular (Rx)
+      - id: med_170
+        pattern: '\bэналаприл\w*\b'
+      - id: med_171
+        pattern: '\bкаптоприл\w*\b'
+      - id: med_172
+        pattern: '\bлозартан\w*\b'
+      - id: med_173
+        pattern: '\bвалсартан\w*\b'
+      - id: med_174
+        pattern: '\bамлодипин\w*\b'
+      - id: med_175
+        pattern: '\bбисопролол\w*\b'
+      - id: med_176
+        pattern: '\bконкор\w*\b'
+      - id: med_177
+        pattern: '\bметопролол\w*\b'
+      - id: med_178
+        pattern: '\bнифедипин\w*\b'
+      - id: med_179
+        pattern: '\bнитроглицерин\w*\b'
+      - id: med_180
+        pattern: '\bкорвалол\w*\b'
+      - id: med_181
+        pattern: '\bвалокордин\w*\b'
+      - id: med_182
+        pattern: '\bвалидол\w*\b'
+      - id: med_183
+        pattern: '\bкардиомагнил\w*\b'
+      - id: med_184
+        pattern: '\bтромбоасс\w*\b'
+      - id: med_185
+        pattern: '\bфуросемид\w*\b'
+      - id: med_186
+        pattern: '\bверошпирон\w*\b'
+
+      # Statins
+      - id: med_190
+        pattern: '\bаторвастатин\w*\b'
+      - id: med_191
+        pattern: '\bрозувастатин\w*\b'
+      - id: med_192
+        pattern: '\bсимвастатин\w*\b'
+
+      # Endocrine
+      - id: med_200
+        pattern: '\bметформин\w*\b'
+      - id: med_201
+        pattern: '\bсиофор\w*\b'
+      - id: med_202
+        pattern: '\bглюкофаж\w*\b'
+      - id: med_203
+        pattern: '\bинсулин\w*\b'
+      - id: med_204
+        pattern: '\bэутирокс\w*\b'
+      - id: med_205
+        pattern: '\b[лl][-\s]?тироксин\w*\b'
+
+      # Sedatives / anxiolytics
+      - id: med_220
+        pattern: '\bфеназепам\w*\b'
+      - id: med_221
+        pattern: '\bафобазол\w*\b'
+      - id: med_222
+        pattern: '\bглицин\w*\b'
+      - id: med_223
+        pattern: '\bново[-\s]?пассит\w*\b'
+      - id: med_224
+        pattern: '\bперсен\w*\b'
+
+      # Herbal / OTC
+      - id: med_240
+        pattern: '\bпустырник\w*\b'
+      - id: med_241
+        pattern: '\bвалериан\w*\b'
+      - id: med_242
+        pattern: '\bэхинаце\w*\b'
+
+  directive_verbs:
+    description: |
+      Imperative or first-person directive verbs that frame the LLM as
+      prescribing treatment. Does NOT block third-person navigation phrases
+      like "врач может рекомендовать" or "обратитесь к врачу".
+    match_type: word
+    patterns:
+      - id: dv_001
+        pattern: "примите"
+      - id: dv_002
+        pattern: "примите внутрь"
+      - id: dv_003
+        pattern: "выпейте"
+      - id: dv_004
+        pattern: "пейте"
+      - id: dv_005
+        pattern: "примените"
+      - id: dv_006
+        pattern: "нанесите"
+      - id: dv_007
+        pattern: "втирайте"
+      - id: dv_008
+        pattern: "закапайте"
+      - id: dv_009
+        pattern: "закапывайте"
+      - id: dv_010
+        pattern: "принимайте"
+      - id: dv_011
+        pattern: "следует принимать"
+      - id: dv_012
+        pattern: "необходимо принимать"
+      - id: dv_013
+        pattern: "нужно принимать"
+      - id: dv_014
+        pattern: "стоит принять"
+      - id: dv_015
+        pattern: "рекомендую принять"
+      - id: dv_016
+        pattern: "рекомендую принимать"
+      - id: dv_017
+        pattern: "я рекомендую"
+      - id: dv_018
+        pattern: "советую принять"
+      - id: dv_019
+        pattern: "советую принимать"
+      - id: dv_020
+        pattern: "назначаю"
+      - id: dv_021
+        pattern: "назначу"
+      - id: dv_022
+        pattern: "прописываю"
+      - id: dv_023
+        pattern: "пропишу"
+      - id: dv_024
+        pattern: "выписываю"
+      - id: dv_025
+        pattern: "выпишу"
+      - id: dv_026
+        pattern: "следует лечить"
+      - id: dv_027
+        pattern: "нужно лечить"
+      - id: dv_030
+        pattern: "поможет препарат"
+      - id: dv_031
+        pattern: "поможет лекарство"
+      - id: dv_032
+        pattern: "попробуйте препарат"
+      - id: dv_033
+        pattern: "попробуйте лекарство"
+      - id: dv_034
+        pattern: "обработайте"
+      - id: dv_035
+        pattern: "смажьте"
+      - id: dv_036
+        pattern: "полощите"
+      - id: dv_037
+        pattern: "промывайте"
+
+  dosages:
+    description: |
+      Numeric dosage and frequency expressions. Stem-based suffixes (\w*)
+      handle Russian noun cases (таблетка/таблетки/таблеток/таблетку).
+      Decimal-aware for "0,5 мг", "2.5 мл" formats.
+    match_type: regex
+    patterns:
+      - id: dose_001
+        pattern: '\b\d+(?:[.,]\d+)?\s*(?:мг|миллиграмм\w*)\b'
+      - id: dose_002
+        pattern: '\b\d+(?:[.,]\d+)?\s*(?:мкг|микрограмм\w*)\b'
+      - id: dose_003
+        pattern: '\b\d+(?:[.,]\d+)?\s*(?:мл|миллилитр\w*)\b'
+      - id: dose_004
+        pattern: '\b\d+(?:[.,]\d+)?\s*(?:г|грамм\w*)\b'
+      - id: dose_005
+        pattern: '\b\d+\s*(?:таб\.?|таблетк\w*)\b'
+      - id: dose_006
+        pattern: '\b\d+\s*(?:капс\.?|капсул\w*)\b'
+      - id: dose_007
+        pattern: '\b\d+\s*(?:кап\.?|капл\w*)\b'
+      - id: dose_008
+        pattern: '\b\d+\s*раз\w*\s+в\s+(?:день|сутки|неделю|час)\b'
+      - id: dose_009
+        pattern: '\bпо\s+\d+\s+(?:таблетк\w*|капсул\w*|капл\w*|раз\w*)'
+      - id: dose_010
+        pattern: '\b(?:утром|дн[её]м|вечером|на\s+ночь)\s+и\s+(?:утром|дн[её]м|вечером|на\s+ночь)\b'
+      - id: dose_011
+        pattern: '\bперед\s+едой\b'
+      - id: dose_012
+        pattern: '\bпосле\s+еды\b'
+      - id: dose_013
+        pattern: '\bна\s+голодный\s+желудок\b'
+      - id: dose_014
+        pattern: '\bкурс\s+лечения\b'
+      - id: dose_015
+        pattern: '\b(?:курсом|в\s+течение)\s+\d+\s+(?:дн\w*|недел\w*|месяц\w*)'
+      - id: dose_016
+        pattern: '\bкаждые\s+\d+\s*(?:час\w*)\b'
+      - id: dose_017
+        pattern: '\b\d+\s*(?:р/д|раза?\s+в\s+день)\b'
+      - id: dose_018
+        pattern: '\b\d+(?:[.,]\d+)?\s*%'
+
+  icd_codes:
+    description: |
+      ICD-10 codes (both Latin and Cyrillic-letter variants used in Russian
+      medical records). Format: letter + 2 digits + optional .digit(s).
+    match_type: regex
+    patterns:
+      - id: icd_001
+        pattern: '\b[A-Z]\d{2}\.\d{1,2}\b'
+      - id: icd_002
+        pattern: '\b[А-Я]\d{2}\.\d{1,2}\b'
+      - id: icd_003
+        pattern: '\bмкб[\s-]*10\b'
+      - id: icd_004
+        pattern: '\bпо\s+мкб\b'
+      - id: icd_005
+        pattern: '\bкод\s+(?:заболевания|диагноза|по\s+мкб)\b'
