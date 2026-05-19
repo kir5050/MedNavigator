@@ -102,14 +102,14 @@ export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <path d="M10 3v10M6 9l4 4 4-4M4 15h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          Скачать выписку для врача (PDF)
+          Скачать маршрутный лист (PDF)
         </a>
       )}
 
       {/* Feedback */}
       {!feedbackSent ? (
         <div className="feedback-card">
-          <h3>Оцените полезность рекомендации</h3>
+          <h3>Оцените полезность маршрута</h3>
           <div className="rating-row">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
@@ -123,7 +123,7 @@ export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
             ))}
           </div>
           <p style={{ fontSize: 14, marginBottom: 8, color: '#64748B' }}>
-            Совпала ли рекомендация?
+            Подходит ли предложенный маршрут?
           </p>
           <div className="helpful-row">
             {([
@@ -158,8 +158,9 @@ export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
 
       {/* Disclaimer */}
       <div className="disclaimer">
-        Информация носит справочный характер и не заменяет консультацию врача.
-        Обязательно обратитесь к специалисту для постановки диагноза и назначения лечения.
+        MedNavigator не ставит диагноз и не назначает лечение.
+        Информация носит справочный характер и помогает подготовиться к визиту.
+        Для постановки диагноза и назначения лечения обязательно обратитесь к врачу.
       </div>
 
       {/* Restart */}
