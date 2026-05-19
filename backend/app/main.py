@@ -30,6 +30,14 @@ from app.models.database import (
     get_session_maker,
 )
 from app.pdf import PDFGenerator
+from app.services.output_safety import (
+    FALLBACKS,
+    REINFORCED_SAFETY_RULES,
+    log_block,
+    preflight_pdf_data,
+    safe_generate_text,
+    validate_output,
+)
 from app.services.triage_engine import TriageEngine
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
@@ -135,6 +143,16 @@ async def startup():
                 await conn.execute(text("ALTER TABLE triage_results ADD COLUMN pdf_generated_at DATETIME"))
             except Exception:
                 pass  # Column already exists
+
+            # output_safety v1: always wipe pdf_cache on startup to avoid
+            # serving stale unsafe cached PDFs. This wipes safe cached
+            # PDFs too, which is acceptable in MVP (pre-revenue, no real
+            # user impact — next PDF request regenerates and re-caches).
+            # NOT an idempotent one-shot migration: runs on every backend
+            # restart by design, until cache versioning is introduced.
+            await conn.execute(text(
+                "UPDATE triage_results SET pdf_cache = NULL, pdf_generated_at = NULL"
+            ))
 
         logger.info("Database initialized: %s", settings.database_url)
 
@@ -373,24 +391,52 @@ async def upload_file(request: Request, session_id: str, file: UploadFile = File
 
     analysis = ""
 
-    file_analysis_system = """Ты — медицинский информационный ассистент. Пациент прислал документ.
-Извлеки медицинские данные для внутреннего использования (НЕ для показа пациенту):
-- Тип документа (анализы, снимок, заключение, рецепт)
-- Диагнозы, если указаны (код МКБ)
-- Ключевые показатели и отклонения от нормы
-- Назначения/рекомендации
-Ответь КРАТКО, списком фактов."""
+    file_analysis_system = """Ты — помощник для извлечения контекста из загруженных медицинских документов. Не ставишь диагноз, не интерпретируешь документ как врач и не даёшь медицинских советов.
+
+Сформируй краткое нейтральное описание документа для контекста маршрутизации. Текст должен быть безопасен для пользовательского интерфейса и PDF.
+
+Извлекай только явно указанные факты:
+- тип документа: анализы, снимок, заключение, рецепт или другое;
+- какие показатели, жалобы, разделы или результаты упомянуты;
+- к какой общей области относится документ: анализы, обследование, врачебное заключение, назначения врача или другое.
+
+НЕ копируй и НЕ называй:
+- конкретные диагнозы;
+- коды МКБ;
+- названия лекарств, БАДов или добавок;
+- дозировки;
+- схемы лечения;
+- рекомендации из документа дословно.
+
+Если документ содержит такие сведения, опиши сам факт нейтрально:
+«документ содержит ранее поставленное врачом заключение»,
+«документ содержит назначения от врача»,
+«документ содержит данные анализов»,
+«документ содержит результаты обследования».
+
+Не делай выводов о причинах симптомов и не добавляй собственных рекомендаций.
+
+Ответь кратко, списком фактов.""".strip()
 
     # Analyze images via LLM vision
     if content_type.startswith("image/"):
         b64 = base64.b64encode(content).decode()
         images = [{"media_type": content_type, "data": b64}]
         try:
-            result = await triage_engine.llm.generate(
-                "Извлеки медицинские данные из этого изображения.",
-                file_analysis_system, images=images, use_cache=False,
+            llm = triage_engine.llm
+
+            async def _call_image(sys_arg, *, temperature, use_cache):
+                return await llm.generate(
+                    "Извлеки медицинские данные из этого изображения.",
+                    sys_arg, temperature=temperature, use_cache=use_cache,
+                    images=images,
+                )
+
+            analysis = await safe_generate_text(
+                _call_image, file_analysis_system,
+                channel="file_analysis", field_name="image",
+                fallback=FALLBACKS.file_analysis,
             )
-            analysis = result.text
         except Exception as e:
             logger.warning("Image analysis failed: %s", e)
 
@@ -405,11 +451,20 @@ async def upload_file(request: Request, session_id: str, file: UploadFile = File
             doc.close()
 
             if pdf_text.strip():
-                result = await triage_engine.llm.generate(
-                    f"Извлеки медицинские данные из этого документа:\n\n{pdf_text[:4000]}",
-                    file_analysis_system, use_cache=False,
+                llm = triage_engine.llm
+                pdf_prompt = f"Извлеки медицинские данные из этого документа:\n\n{pdf_text[:4000]}"
+
+                async def _call_pdf(sys_arg, *, temperature, use_cache):
+                    return await llm.generate(
+                        pdf_prompt, sys_arg,
+                        temperature=temperature, use_cache=use_cache,
+                    )
+
+                analysis = await safe_generate_text(
+                    _call_pdf, file_analysis_system,
+                    channel="file_analysis", field_name="pdf",
+                    fallback=FALLBACKS.file_analysis,
                 )
-                analysis = result.text
             else:
                 analysis = "PDF без текста — возможно отсканированный документ."
         except Exception as e:
@@ -525,11 +580,55 @@ async def download_pdf(request: Request, session_id: str):
             from app.services.triage_engine import extract_json as ej
             prep_data = ej(prep_result.text)
             preparations = prep_data.get("preparations", {})
+
+            # Output safety: any unsafe item → retry once with reinforced rules.
+            pre_retry_legacy = []
+            for spec_name, items in preparations.items():
+                for i, item in enumerate(items or []):
+                    if isinstance(item, str):
+                        r = validate_output(item)
+                        if not r.is_safe:
+                            pre_retry_legacy.append((f"preparations[{spec_name}][{i}]", r))
+            if pre_retry_legacy:
+                for fname, vres in pre_retry_legacy:
+                    log_block(
+                        channel="legacy_preparation", field_name=fname, result=vres,
+                        retry_attempted=True, fallback_applied=False,
+                    )
+                prep_result = await triage_engine.llm.generate(
+                    prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
+                    temperature=0.0, use_cache=False,
+                )
+                prep_data = ej(prep_result.text)
+                preparations = prep_data.get("preparations", {})
+                for spec_name in list(preparations.keys()):
+                    kept = []
+                    for i, item in enumerate(preparations.get(spec_name) or []):
+                        if not isinstance(item, str):
+                            continue
+                        r = validate_output(item)
+                        if r.is_safe:
+                            kept.append(item)
+                        else:
+                            log_block(
+                                channel="legacy_preparation",
+                                field_name=f"preparations[{spec_name}][{i}]",
+                                result=r, retry_attempted=True, fallback_applied=True,
+                            )
+                    preparations[spec_name] = kept
+
             for spec in specialists:
                 if isinstance(spec, dict) and not spec.get("preparation"):
                     spec_name = spec.get("specialty", "")
-                    if spec_name in preparations:
-                        spec["preparation"] = preparations[spec_name]
+                    llm_items = preparations.get(spec_name) if spec_name in preparations else None
+                    if llm_items:
+                        spec["preparation"] = llm_items
+                    else:
+                        # KB fallback when LLM didn't generate or items were filtered out.
+                        for key, kb_data in triage_engine.kb.specialties.items():
+                            if kb_data["name"] == spec_name:
+                                spec["preparation"] = kb_data.get("preparation", [])
+                                break
         except Exception:
             logger.warning("PDF preparation generation failed, using KB fallback")
             for spec in specialists:
@@ -565,6 +664,12 @@ async def download_pdf(request: Request, session_id: str):
         "red_flags": red_flags,
         "is_crisis_only": state.get("crisis_locked", False),
     }
+
+    # PDF preflight: strip unsafe persisted LLM-derived content (assistant
+    # history lines, uploaded_files[].analysis, LLM fields collected above).
+    # Defence-in-depth — most fields were already filtered at their LLM
+    # call site, but state may carry content from before this PR.
+    pdf_data = preflight_pdf_data(pdf_data)
 
     pdf_bytes = PDFGenerator.generate(pdf_data, session_id)
 

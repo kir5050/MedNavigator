@@ -258,6 +258,12 @@ class PDFGenerator:
     .history-item .text {{
         color: #1E293B;
     }}
+    .docs-disclaimer {{
+        font-size: 9pt;
+        color: #64748B;
+        font-style: italic;
+        margin: 4px 0 12px 0;
+    }}
     .disclaimer {{
         margin-top: 32px;
         padding: 12px 16px;
@@ -400,22 +406,35 @@ class PDFGenerator:
         if not uploaded_files:
             return ""
 
-        files_with_analysis = [f for f in uploaded_files if f.get("analysis")]
-        if not files_with_analysis:
-            return ""
-
-        items = ""
-        for f in files_with_analysis:
+        # Always-on disclaimer when any document was uploaded — independent of
+        # whether the analysis text survived the output_safety filter.
+        # Document content is referenced, never reproduced verbatim.
+        parts = [
+            '<h2>Загруженные документы</h2>',
+            '<p class="docs-disclaimer">'
+            'Данные из загруженных вами документов учтены при подготовке этого листа. '
+            'Содержимое документов остаётся при вас; врач увидит оригиналы на приёме.'
+            '</p>',
+        ]
+        for f in uploaded_files:
+            if not isinstance(f, dict):
+                continue
             filename = escape(f.get("filename", "файл"))
-            analysis = escape(f.get("analysis", ""))
-            items += (
-                f'<div class="specialist-card">'
-                f'<h3>{filename}</h3>'
-                f'<p>{analysis}</p>'
-                f'</div>'
-            )
-
-        return f"<h2>Загруженные документы</h2>{items}"
+            analysis = (f.get("analysis") or "").strip()
+            if analysis:
+                parts.append(
+                    f'<div class="specialist-card">'
+                    f'<h3>{filename}</h3>'
+                    f'<p>{escape(analysis)}</p>'
+                    f'</div>'
+                )
+            else:
+                # Filename only — preserves the fact of upload without leaking
+                # unfiltered / empty analysis text.
+                parts.append(
+                    f'<div class="specialist-card"><h3>{filename}</h3></div>'
+                )
+        return "\n".join(parts)
 
     @staticmethod
     def _build_specialists_section(data: dict) -> str:
