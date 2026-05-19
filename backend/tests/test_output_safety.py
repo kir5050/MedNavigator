@@ -528,3 +528,158 @@ class TestDocumentsSectionAlwaysDisclaimer:
         per_file_card_start = html.index("<h3>c.pdf</h3>")
         card_remainder = html[per_file_card_start:]
         assert "<p>" not in card_remainder.split("</div>")[0]
+
+
+# ---------------------------------------------------------------------------
+# JSON channels — integration through TriageEngine
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestTriageJSONFilter:
+    async def test_triage_summary_unsafe_retry_unsafe_falls_back(self):
+        engine = _make_triage_engine([
+            # 1. triage — unsafe summary
+            '{"urgency": "medium", "summary": "Симптомы указывают на гастрит.", "medical_areas": []}',
+            # 2. triage retry — still unsafe
+            '{"urgency": "medium", "summary": "По описанию это похоже на язву.", "medical_areas": []}',
+            # 3. routing — safe
+            '{"specialists": [{"specialty": "Невролог", "reason": "оценка боли"}], "explanation": "обычная маршрутизация"}',
+            # 4. preparation — safe
+            '{"preparations": {"Невролог": ["взять паспорт"]}}',
+        ])
+        result = await engine.run_triage({
+            "symptoms": [{"name": "головная боль"}, {"name": "тошнота"}],
+            "history": "",
+        })
+        # Summary must NOT carry unsafe content from either LLM attempt.
+        assert "гастрит" not in result["triage"]["summary"]
+        assert "язву" not in result["triage"]["summary"]
+        # Fallback is used after second unsafe attempt.
+        assert result["triage"]["summary"] == FALLBACKS.triage_summary
+
+    async def test_safe_triage_passes_through_unchanged(self):
+        engine = _make_triage_engine([
+            '{"urgency": "medium", "summary": "Пациент описал жалобы.", "medical_areas": []}',
+            '{"specialists": [{"specialty": "Невролог", "reason": "оценка боли"}], "explanation": "обычно при таких жалобах"}',
+            '{"preparations": {"Невролог": ["взять паспорт"]}}',
+        ])
+        result = await engine.run_triage({
+            "symptoms": [{"name": "головная боль"}, {"name": "тошнота"}],
+            "history": "",
+        })
+        assert result["triage"]["summary"] == "Пациент описал жалобы."
+
+
+@pytest.mark.asyncio
+class TestRoutingJSONFilter:
+    async def test_routing_explanation_and_reason_unsafe_both_replaced(self):
+        engine = _make_triage_engine([
+            # 1. triage — safe
+            '{"urgency": "medium", "summary": "Жалобы записаны.", "medical_areas": []}',
+            # 2. routing — unsafe explanation AND reason
+            '{"specialists": [{"specialty": "Невролог", "reason": "Можно предположить мигрень."}], "explanation": "Симптомы указывают на мигрень."}',
+            # 3. routing retry — still unsafe
+            '{"specialists": [{"specialty": "Невролог", "reason": "У вас, вероятно, мигрень."}], "explanation": "По описанию это похоже на мигрень."}',
+            # 4. preparation — safe
+            '{"preparations": {"Невролог": ["взять паспорт"]}}',
+        ])
+        result = await engine.run_triage({
+            "symptoms": [{"name": "головная боль"}, {"name": "тошнота"}],
+            "history": "",
+        })
+        # Both fields should be replaced with FALLBACKS strings.
+        explanation = result["routing"]["explanation"]
+        assert "мигрень" not in explanation
+        assert explanation == FALLBACKS.routing_explanation
+        # specialist reason — note that KB-validation may have replaced specialists
+        # entirely; tolerant assertion: if our LLM specialist still present,
+        # its reason must be safe.
+        for spec in result["routing"]["specialists"]:
+            assert "мигрень" not in spec.get("reason", "")
+
+
+@pytest.mark.asyncio
+class TestPDFSummaryJSONFilter:
+    async def test_pdf_summary_unsafe_questions_replaced_by_generic(self):
+        from app.medical_kb.knowledge_base import MedicalKB
+        from app.services.triage_engine import TriageEngine
+        llm = MagicMock()
+        llm.generate = AsyncMock(side_effect=[
+            # 1. first pdf_summary call — unsafe questions/what_to_bring
+            _resp(
+                '{"complaints_simple": "Жалобы.", "complaints_medical": "Жалобы.", '
+                '"timeline": "", '
+                '"questions_for_doctor": ["Нужно ли принять парацетамол?", "По описанию это похоже на язву — нужно ли?"], '
+                '"what_to_bring": ["принесите парацетамол"]}'
+            ),
+            # 2. retry — still unsafe
+            _resp(
+                '{"complaints_simple": "Жалобы.", "complaints_medical": "Жалобы.", '
+                '"timeline": "", '
+                '"questions_for_doctor": ["Выпейте 1 таблетку — стоит ли?"], '
+                '"what_to_bring": ["купите нурофен"]}'
+            ),
+        ])
+        engine = TriageEngine(llm=llm, kb=MedicalKB())
+        out = await engine.generate_pdf_data({
+            "symptoms": [{"name": "головная боль"}],
+            "triage": {"summary": "Жалобы записаны."},
+            "routing": {"specialists": []},
+        })
+        # Both lists must have been replaced wholesale by the generic fallbacks.
+        assert out["questions_for_doctor"] == FALLBACKS.questions_for_doctor
+        assert out["what_to_bring"] == FALLBACKS.what_to_bring
+
+
+# ---------------------------------------------------------------------------
+# Crisis-PDF with pre-existing unsafe persisted state (Δ11)
+# ---------------------------------------------------------------------------
+
+
+class TestCrisisPDFWithPreExistingUnsafeState:
+    """Crisis sessions (PR #8/#11) hide most routine sections, but history
+    and uploaded_files still render. Any persisted unsafe content from
+    pre-crisis turns must be scrubbed by preflight."""
+
+    def test_pre_crisis_unsafe_assistant_lines_omitted_in_crisis_pdf(self):
+        pdf_data = {
+            "is_crisis_only": True,
+            "history_lines": [
+                "Пациент: болит голова",
+                "Ассистент: По описанию это похоже на мигрень.",  # unsafe pre-crisis
+                "Пациент: хочу умереть",
+                "Ассистент: Пожалуйста, обратитесь за помощью прямо сейчас. "
+                "Телефон доверия: 8-800-2000-122 ...",  # safe crisis-message itself
+            ],
+            "red_flags": [
+                "Пожалуйста, обратитесь за помощью прямо сейчас. "
+                "Телефон доверия: 8-800-2000-122 (бесплатно, круглосуточно). "
+                "Скорая помощь: 103 или 112. Вы не одиноки, и помощь доступна.",
+            ],
+        }
+        out = preflight_pdf_data(pdf_data)
+        kept = out["history_lines"]
+        # Both patient lines preserved (own words, never filtered).
+        assert kept[0] == "Пациент: болит голова"
+        assert kept[1] == "Пациент: хочу умереть"
+        # Unsafe assistant line omitted entirely; safe crisis-message kept.
+        joined = " ".join(kept)
+        assert "мигрень" not in joined
+        assert "8-800-2000-122" in joined
+
+    def test_pre_crisis_unsafe_uploaded_file_analysis_emptied_in_crisis_pdf(self):
+        pdf_data = {
+            "is_crisis_only": True,
+            "uploaded_files": [
+                {"filename": "old_anketa.pdf",
+                 "analysis": "Документ содержит назначение: Нурофен 200 мг"},
+            ],
+            "history_lines": ["Пациент: хочу умереть"],
+        }
+        out = preflight_pdf_data(pdf_data)
+        f = out["uploaded_files"][0]
+        # filename preserved (fact-of-upload is information for the doctor)
+        assert f["filename"] == "old_anketa.pdf"
+        # analysis emptied (would be hidden by _build_documents_section)
+        assert f["analysis"] == ""

@@ -30,7 +30,14 @@ from app.models.database import (
     get_session_maker,
 )
 from app.pdf import PDFGenerator
-from app.services.output_safety import FALLBACKS, safe_generate_text
+from app.services.output_safety import (
+    FALLBACKS,
+    REINFORCED_SAFETY_RULES,
+    log_block,
+    preflight_pdf_data,
+    safe_generate_text,
+    validate_output,
+)
 from app.services.triage_engine import TriageEngine
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
@@ -551,11 +558,55 @@ async def download_pdf(request: Request, session_id: str):
             from app.services.triage_engine import extract_json as ej
             prep_data = ej(prep_result.text)
             preparations = prep_data.get("preparations", {})
+
+            # Output safety: any unsafe item → retry once with reinforced rules.
+            pre_retry_legacy = []
+            for spec_name, items in preparations.items():
+                for i, item in enumerate(items or []):
+                    if isinstance(item, str):
+                        r = validate_output(item)
+                        if not r.is_safe:
+                            pre_retry_legacy.append((f"preparations[{spec_name}][{i}]", r))
+            if pre_retry_legacy:
+                for fname, vres in pre_retry_legacy:
+                    log_block(
+                        channel="legacy_preparation", field_name=fname, result=vres,
+                        retry_attempted=True, fallback_applied=False,
+                    )
+                prep_result = await triage_engine.llm.generate(
+                    prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
+                    temperature=0.0, use_cache=False,
+                )
+                prep_data = ej(prep_result.text)
+                preparations = prep_data.get("preparations", {})
+                for spec_name in list(preparations.keys()):
+                    kept = []
+                    for i, item in enumerate(preparations.get(spec_name) or []):
+                        if not isinstance(item, str):
+                            continue
+                        r = validate_output(item)
+                        if r.is_safe:
+                            kept.append(item)
+                        else:
+                            log_block(
+                                channel="legacy_preparation",
+                                field_name=f"preparations[{spec_name}][{i}]",
+                                result=r, retry_attempted=True, fallback_applied=True,
+                            )
+                    preparations[spec_name] = kept
+
             for spec in specialists:
                 if isinstance(spec, dict) and not spec.get("preparation"):
                     spec_name = spec.get("specialty", "")
-                    if spec_name in preparations:
-                        spec["preparation"] = preparations[spec_name]
+                    llm_items = preparations.get(spec_name) if spec_name in preparations else None
+                    if llm_items:
+                        spec["preparation"] = llm_items
+                    else:
+                        # KB fallback when LLM didn't generate or items were filtered out.
+                        for key, kb_data in triage_engine.kb.specialties.items():
+                            if kb_data["name"] == spec_name:
+                                spec["preparation"] = kb_data.get("preparation", [])
+                                break
         except Exception:
             logger.warning("PDF preparation generation failed, using KB fallback")
             for spec in specialists:
@@ -591,6 +642,12 @@ async def download_pdf(request: Request, session_id: str):
         "red_flags": red_flags,
         "is_crisis_only": state.get("crisis_locked", False),
     }
+
+    # PDF preflight: strip unsafe persisted LLM-derived content (assistant
+    # history lines, uploaded_files[].analysis, LLM fields collected above).
+    # Defence-in-depth — most fields were already filtered at their LLM
+    # call site, but state may carry content from before this PR.
+    pdf_data = preflight_pdf_data(pdf_data)
 
     pdf_bytes = PDFGenerator.generate(pdf_data, session_id)
 

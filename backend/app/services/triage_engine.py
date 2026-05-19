@@ -5,7 +5,14 @@ import re
 from app.llm.manager import LLMManager
 from app.medical_kb import MedicalKB
 from app.prompts import PromptTemplates
-from app.services.output_safety import FALLBACKS, safe_generate_text
+from app.services.output_safety import (
+    FALLBACKS,
+    REINFORCED_SAFETY_RULES,
+    ValidationResult,
+    log_block,
+    safe_generate_text,
+    validate_output,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +209,29 @@ class TriageEngine:
             logger.warning("Failed to parse triage: %s", triage_result.text)
             triage = {"urgency": "medium", "medical_areas": [], "summary": ""}
 
+        # Output safety: only `summary` is user-facing in this JSON.
+        summary_check = validate_output(triage.get("summary", ""))
+        if not summary_check.is_safe:
+            log_block(
+                channel="triage", field_name="summary", result=summary_check,
+                retry_attempted=True, fallback_applied=False,
+            )
+            triage_result = await self.llm.generate(
+                prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
+                temperature=0.0, use_cache=False,
+            )
+            try:
+                triage = extract_json(triage_result.text)
+            except json.JSONDecodeError:
+                triage = {"urgency": "medium", "medical_areas": [], "summary": ""}
+            summary_check2 = validate_output(triage.get("summary", ""))
+            if not summary_check2.is_safe:
+                log_block(
+                    channel="triage", field_name="summary", result=summary_check2,
+                    retry_attempted=True, fallback_applied=True,
+                )
+                triage["summary"] = FALLBACKS.triage_summary
+
         # Routing
         available = self.kb.get_specialties_for_symptoms(kb_matches or [s.get("name", "") for s in all_symptoms])
         available_str = json.dumps(
@@ -217,6 +247,51 @@ class TriageEngine:
         except json.JSONDecodeError:
             logger.warning("Failed to parse routing: %s", routing_result.text)
             routing = {"specialists": [], "explanation": ""}
+
+        # Output safety: validate explanation + each specialist reason.
+        # Single retry on whole JSON if any user-facing field is unsafe;
+        # then per-field fallback for whatever is still unsafe after retry.
+        pre_retry_blocks: list[tuple[str, ValidationResult]] = []
+        r_expl = validate_output(routing.get("explanation", ""))
+        if not r_expl.is_safe:
+            pre_retry_blocks.append(("explanation", r_expl))
+        for i, s in enumerate(routing.get("specialists", [])):
+            if isinstance(s, dict):
+                r_reason = validate_output(s.get("reason", ""))
+                if not r_reason.is_safe:
+                    pre_retry_blocks.append((f"specialist_reason[{i}]", r_reason))
+
+        if pre_retry_blocks:
+            for field_name, vres in pre_retry_blocks:
+                log_block(
+                    channel="routing", field_name=field_name, result=vres,
+                    retry_attempted=True, fallback_applied=False,
+                )
+            routing_result = await self.llm.generate(
+                prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
+                temperature=0.0, use_cache=False,
+            )
+            try:
+                routing = extract_json(routing_result.text)
+            except json.JSONDecodeError:
+                routing = {"specialists": [], "explanation": ""}
+            r_expl2 = validate_output(routing.get("explanation", ""))
+            if not r_expl2.is_safe:
+                log_block(
+                    channel="routing", field_name="explanation", result=r_expl2,
+                    retry_attempted=True, fallback_applied=True,
+                )
+                routing["explanation"] = FALLBACKS.routing_explanation
+            for i, s in enumerate(routing.get("specialists", [])):
+                if isinstance(s, dict):
+                    r_reason2 = validate_output(s.get("reason", ""))
+                    if not r_reason2.is_safe:
+                        log_block(
+                            channel="routing", field_name=f"specialist_reason[{i}]",
+                            result=r_reason2,
+                            retry_attempted=True, fallback_applied=True,
+                        )
+                        s["reason"] = FALLBACKS.specialist_reason
 
         specialists = routing.get("specialists", [])
 
@@ -288,12 +363,58 @@ class TriageEngine:
             logger.warning("Failed to generate preparation, falling back to KB: %s", e)
             preparations = {}
 
+        # Output safety: if any preparation item is unsafe, retry once with
+        # reinforced rules. Any items still unsafe after retry are dropped;
+        # the per-spec assignment below then falls through to KB static data.
+        pre_retry_prep: list[tuple[str, ValidationResult]] = []
+        for spec_name, items in (preparations or {}).items():
+            for i, item in enumerate(items or []):
+                if isinstance(item, str):
+                    r = validate_output(item)
+                    if not r.is_safe:
+                        pre_retry_prep.append((f"preparations[{spec_name}][{i}]", r))
+
+        if pre_retry_prep:
+            for fname, vres in pre_retry_prep:
+                log_block(
+                    channel="preparation", field_name=fname, result=vres,
+                    retry_attempted=True, fallback_applied=False,
+                )
+            try:
+                prep_result = await self.llm.generate(
+                    prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
+                    temperature=0.0, use_cache=False,
+                )
+                prep_data = extract_json(prep_result.text)
+                preparations = prep_data.get("preparations", {})
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning("Preparation retry failed, will fall back to KB: %s", e)
+                preparations = {}
+            for spec_name in list(preparations.keys()):
+                kept: list[str] = []
+                for i, item in enumerate(preparations.get(spec_name) or []):
+                    if not isinstance(item, str):
+                        continue
+                    r = validate_output(item)
+                    if r.is_safe:
+                        kept.append(item)
+                    else:
+                        log_block(
+                            channel="preparation",
+                            field_name=f"preparations[{spec_name}][{i}]",
+                            result=r, retry_attempted=True, fallback_applied=True,
+                        )
+                preparations[spec_name] = kept
+
         for spec in specialists:
             spec_name = spec.get("specialty", "")
-            if spec_name in preparations:
-                spec["preparation"] = preparations[spec_name]
+            llm_items = preparations.get(spec_name) if spec_name in preparations else None
+            if llm_items:
+                spec["preparation"] = llm_items
             else:
-                # Fallback to KB static data only if LLM didn't generate
+                # Fallback to KB static data when LLM didn't generate, all
+                # items were filtered out, or the spec was absent from
+                # the LLM response.
                 for key, data in self.kb.specialties.items():
                     if data["name"] == spec_name:
                         spec["preparation"] = data.get("preparation", [])
@@ -323,7 +444,7 @@ class TriageEngine:
         )
         result = await self.llm.generate(prompt, system, use_cache=False)
         try:
-            return extract_json(result.text)
+            parsed = extract_json(result.text)
         except json.JSONDecodeError:
             logger.warning("Failed to parse PDF data: %s", result.text)
             return {
@@ -333,3 +454,80 @@ class TriageEngine:
                 "questions_for_doctor": [],
                 "what_to_bring": [],
             }
+
+        # Output safety: validate four user-facing fields. Retry once on
+        # any unsafe; per-field fallback for whatever is still unsafe.
+        pre_retry: list[tuple[str, ValidationResult]] = []
+        for fname in ("complaints_simple", "complaints_medical"):
+            r = validate_output(parsed.get(fname, "") or "")
+            if not r.is_safe:
+                pre_retry.append((fname, r))
+        for fname in ("questions_for_doctor", "what_to_bring"):
+            for i, item in enumerate(parsed.get(fname, []) or []):
+                if isinstance(item, str):
+                    r = validate_output(item)
+                    if not r.is_safe:
+                        pre_retry.append((f"{fname}[{i}]", r))
+
+        if pre_retry:
+            for fname, vres in pre_retry:
+                log_block(
+                    channel="pdf_summary", field_name=fname, result=vres,
+                    retry_attempted=True, fallback_applied=False,
+                )
+            try:
+                result = await self.llm.generate(
+                    prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
+                    temperature=0.0, use_cache=False,
+                )
+                parsed = extract_json(result.text)
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning("PDF summary retry failed: %s", e)
+                parsed = {
+                    "complaints_medical": "",
+                    "complaints_simple": session_state.get("triage", {}).get("summary", ""),
+                    "timeline": "",
+                    "questions_for_doctor": [],
+                    "what_to_bring": [],
+                }
+            # Per-field fallback for anything still unsafe.
+            r_cs = validate_output(parsed.get("complaints_simple", "") or "")
+            if not r_cs.is_safe:
+                log_block(
+                    channel="pdf_summary", field_name="complaints_simple", result=r_cs,
+                    retry_attempted=True, fallback_applied=True,
+                )
+                parsed["complaints_simple"] = FALLBACKS.complaints_simple
+            r_cm = validate_output(parsed.get("complaints_medical", "") or "")
+            if not r_cm.is_safe:
+                log_block(
+                    channel="pdf_summary", field_name="complaints_medical", result=r_cm,
+                    retry_attempted=True, fallback_applied=True,
+                )
+                parsed["complaints_medical"] = FALLBACKS.complaints_medical
+            for fname, fallback_list in (
+                ("questions_for_doctor", FALLBACKS.questions_for_doctor),
+                ("what_to_bring", FALLBACKS.what_to_bring),
+            ):
+                items = parsed.get(fname, []) or []
+                kept: list[str] = []
+                any_blocked = False
+                for i, item in enumerate(items):
+                    if not isinstance(item, str):
+                        continue
+                    r = validate_output(item)
+                    if r.is_safe:
+                        kept.append(item)
+                    else:
+                        any_blocked = True
+                        log_block(
+                            channel="pdf_summary", field_name=f"{fname}[{i}]",
+                            result=r, retry_attempted=True, fallback_applied=True,
+                        )
+                # Whole-list fallback only if every item was blocked.
+                if not kept and any_blocked:
+                    parsed[fname] = list(fallback_list)
+                else:
+                    parsed[fname] = kept
+
+        return parsed
