@@ -254,8 +254,11 @@ class TestSafeGenerateText:
         assert second_call_kwargs["use_cache"] is False
         # Retry system arg contains the reinforced rules.
         second_system_arg = call.await_args_list[1].args[0]
-        assert "ЗАПРЕЩЁННЫЕ" in second_system_arg
-        assert REINFORCED_SAFETY_RULES.split("\n")[0] in second_system_arg
+        # Assert the whole constant is appended — stronger than a single-
+        # substring check and immune to wording changes within the constant.
+        assert REINFORCED_SAFETY_RULES in second_system_arg
+        # And the original base system is still present (appended, not replaced).
+        assert "базовый system" in second_system_arg
 
     async def test_logger_does_not_leak_llm_text(self, caplog):
         import logging as _logging
@@ -469,14 +472,19 @@ class TestFileAnalysisPrompt:
 
     def test_prompt_does_not_request_icd_codes(self):
         # Inspect the source of main.py to confirm the prompt no longer
-        # contains the "Диагнозы, если указаны (код МКБ)" line.
-        # We compare on substring of the rendered prompt string.
+        # contains the "Диагнозы, если указаны (код МКБ)" line and that
+        # the new safety framing is in place.
         from app import main as main_module
         source = Path(main_module.__file__).read_text(encoding="utf-8")
         # Old line removed:
         assert "Диагнозы, если указаны (код МКБ)" not in source
-        # New neutral framing present:
-        assert "НЕ копируй и НЕ называй диагнозы" in source
+        # New non-doctor framing present (opening sentence):
+        assert "Не ставишь диагноз" in source
+        # New user-facing-safety framing present:
+        assert "Текст должен быть безопасен для пользовательского интерфейса и PDF" in source
+        # Header of the explicit prohibition block present:
+        assert "НЕ копируй и НЕ называй:" in source
+        # Neutral framing example still present:
         assert "документ содержит ранее поставленное врачом заключение" in source
 
 
