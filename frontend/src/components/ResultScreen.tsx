@@ -18,7 +18,7 @@ const URGENCY_LABELS: Record<string, string> = {
   emergency: 'ЭКСТРЕННО — вызовите скорую: 103',
   high: 'СРОЧНО — обратитесь к врачу сегодня',
   medium: 'ПЛАНОВО — запишитесь в ближайшие дни',
-  low: 'САМОПОМОЩЬ — наблюдайте за состоянием',
+  low: 'НЕСРОЧНО — можно обратиться планово',
 }
 
 export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
