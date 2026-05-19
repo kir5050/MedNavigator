@@ -278,6 +278,32 @@ class TestSafeGenerateText:
         # But category names and pattern ids are project config — safe.
         assert "diagnoses" in joined
 
+    async def test_first_unsafe_retry_runtime_error_returns_fallback(self, caplog):
+        """The retry-call must not propagate provider/network/runtime
+        exceptions to the caller after the first call already produced
+        unsafe content. Fallback is the safe option."""
+        import logging as _logging
+        caplog.set_level(_logging.WARNING)
+
+        call = AsyncMock(side_effect=[
+            _resp("Примите парацетамол"),                    # first: unsafe
+            RuntimeError("provider exploded mid-retry"),     # retry: raises
+        ])
+        out = await safe_generate_text(
+            call, system="sys", channel="chat", field_name="clarification",
+            fallback=FALLBACKS.chat_clarification,
+        )
+        assert out == FALLBACKS.chat_clarification
+        joined = " ".join(rec.getMessage() for rec in caplog.records)
+        # We log that retry raised AND a block event with fallback_applied=true.
+        assert "fallback_applied=True" in joined
+        # The raw exception message ("provider exploded mid-retry") must not
+        # appear in logs — only the exception type ("RuntimeError") does.
+        assert "RuntimeError" in joined
+        assert "provider exploded mid-retry" not in joined
+        # And no unsafe LLM substring in logs.
+        assert "парацетамол" not in joined
+
 
 # ---------------------------------------------------------------------------
 # PDF preflight — strip unsafe persisted LLM-derived content
@@ -638,6 +664,122 @@ class TestPDFSummaryJSONFilter:
         # Both lists must have been replaced wholesale by the generic fallbacks.
         assert out["questions_for_doctor"] == FALLBACKS.questions_for_doctor
         assert out["what_to_bring"] == FALLBACKS.what_to_bring
+        # complaints_medical hide-on-unsafe policy preserved across the retry
+        # path even when complaints_medical itself was already safe in the
+        # original — the per-field validate after retry runs against the
+        # retry parse (also safe here), so this assertion is implicit but
+        # we make it explicit as a regression guard.
+        assert out.get("complaints_medical", None) is not None
+
+
+# ---------------------------------------------------------------------------
+# JSON retry FAILURE must preserve original safe structured fields
+# (BLOCKER 2 from PR #13 review)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestJSONRetryFailurePreservesOriginal:
+    """If the retry LLM call returns invalid JSON (or raises), the original
+    first-call parsed JSON MUST NOT be replaced by a default dict — that
+    would silently drop safe structured fields (notably triage.urgency,
+    routing.specialists[].priority/specialty)."""
+
+    async def test_triage_retry_invalid_json_preserves_urgency_and_falls_back_summary(self):
+        # symptoms with names that don't match KB synonyms → KB-validation
+        # in routing is skipped → routing.specialists is preserved from LLM.
+        engine = _make_triage_engine([
+            # 1. triage: urgency=high (safe), summary unsafe
+            '{"urgency": "high", "urgency_reason": "сильные жалобы", '
+            '"medical_areas": ["abdomen"], '
+            '"summary": "По описанию это похоже на гастрит."}',
+            # 2. triage retry: invalid JSON
+            "garbage with no JSON at all",
+            # 3. routing: safe
+            '{"specialists": [{"specialty": "Терапевт", "reason": "первичный осмотр", "priority": 1}], '
+            '"explanation": "обычная маршрутизация"}',
+            # 4. preparation: safe
+            '{"preparations": {"Терапевт": ["взять паспорт"]}}',
+        ])
+        result = await engine.run_triage({
+            "symptoms": [
+                {"name": "тестовый симптом один"},
+                {"name": "тестовый симптом два"},
+            ],
+            "history": "",
+        })
+        # CRITICAL: urgency must NOT have collapsed to the default "medium".
+        assert result["triage"]["urgency"] == "high"
+        assert result["triage"]["urgency_reason"] == "сильные жалобы"
+        assert result["triage"]["medical_areas"] == ["abdomen"]
+        # summary fell back to the generic safe text.
+        assert result["triage"]["summary"] == FALLBACKS.triage_summary
+
+    async def test_routing_retry_invalid_json_preserves_specialists_and_falls_back_text_fields(self):
+        engine = _make_triage_engine([
+            # 1. triage: safe
+            '{"urgency": "medium", "summary": "Жалобы записаны.", "medical_areas": []}',
+            # 2. routing: specialty/priority safe, both reason AND explanation unsafe
+            '{"specialists": [{"specialty": "Невролог", '
+            '"reason": "Можно предположить мигрень.", "priority": 1}], '
+            '"explanation": "Симптомы указывают на мигрень."}',
+            # 3. routing retry: invalid JSON
+            "completely broken response",
+            # 4. preparation: safe
+            '{"preparations": {"Невролог": ["взять паспорт"]}}',
+        ])
+        result = await engine.run_triage({
+            "symptoms": [
+                {"name": "тестовый симптом один"},
+                {"name": "тестовый симптом два"},
+            ],
+            "history": "",
+        })
+        # CRITICAL: specialists list must NOT have been wiped to [].
+        specialists = result["routing"]["specialists"]
+        assert len(specialists) == 1
+        assert specialists[0]["specialty"] == "Невролог"
+        assert specialists[0]["priority"] == 1
+        # reason replaced with generic safe text, mention of диагноз gone.
+        assert specialists[0]["reason"] == FALLBACKS.specialist_reason
+        assert "мигрень" not in specialists[0]["reason"]
+        # explanation replaced with generic.
+        assert result["routing"]["explanation"] == FALLBACKS.routing_explanation
+        assert "мигрень" not in result["routing"]["explanation"]
+
+    async def test_pdf_summary_retry_invalid_json_applies_generic_fallbacks_and_preserves_safe_fields(self):
+        from app.medical_kb.knowledge_base import MedicalKB
+        from app.services.triage_engine import TriageEngine
+        llm = MagicMock()
+        llm.generate = AsyncMock(side_effect=[
+            # 1. first pdf_summary: safe complaints_simple,
+            #    unsafe complaints_medical, unsafe questions/what_to_bring.
+            _resp(
+                '{"complaints_simple": "Пациент описал жалобы на головную боль и тошноту.", '
+                '"complaints_medical": "По описанию это похоже на мигрень.", '
+                '"timeline": "несколько дней", '
+                '"questions_for_doctor": ["Нужно ли принять парацетамол?"], '
+                '"what_to_bring": ["принесите ибупрофен"]}'
+            ),
+            # 2. retry: invalid JSON — must not wipe original.
+            _resp("retry totally failed"),
+        ])
+        engine = TriageEngine(llm=llm, kb=MedicalKB())
+        out = await engine.generate_pdf_data({
+            "symptoms": [{"name": "тестовый симптом"}],
+            "triage": {"summary": "..."},
+            "routing": {"specialists": []},
+        })
+        # complaints_simple was safe in original → preserved.
+        assert out["complaints_simple"] == "Пациент описал жалобы на головную боль и тошноту."
+        # complaints_medical was unsafe → hide policy (empty string).
+        assert out["complaints_medical"] == ""
+        # questions_for_doctor: all original items were unsafe → wholesale fallback.
+        assert out["questions_for_doctor"] == FALLBACKS.questions_for_doctor
+        # what_to_bring: same wholesale fallback.
+        assert out["what_to_bring"] == FALLBACKS.what_to_bring
+        # timeline (non-user-facing, not under safety) preserved from first call.
+        assert out.get("timeline") == "несколько дней"
 
 
 # ---------------------------------------------------------------------------

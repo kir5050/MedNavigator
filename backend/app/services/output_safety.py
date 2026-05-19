@@ -266,6 +266,9 @@ async def safe_generate_text(
     knobs above. JSON callers do not use this wrapper because retry must
     preserve the JSON contract; they call ``validate_output`` inline.
     """
+    # First call: exceptions propagate to the caller — output safety is not
+    # a general outage fallback, and the caller may already have its own
+    # exception handling (e.g. file_analysis wraps the whole thing).
     first = await llm_call(system, temperature=base_temperature, use_cache=False)
     result = get_validator().validate(first.text)
     if result.is_safe:
@@ -277,7 +280,23 @@ async def safe_generate_text(
         retry_attempted=True, fallback_applied=False,
     )
     reinforced = system + "\n\n" + REINFORCED_SAFETY_RULES
-    second = await llm_call(reinforced, temperature=0.0, use_cache=False)
+    try:
+        second = await llm_call(reinforced, temperature=0.0, use_cache=False)
+    except Exception as exc:
+        # Retry-call failure (network / provider / runtime) MUST NOT propagate.
+        # The first call already produced unsafe content; we cannot serve that.
+        # Falling back is the safe option. Exception type is logged but the
+        # raw exception message is NOT — it may quote LLM/network payloads.
+        logger.warning(
+            "output_safety retry call raised %s — applying fallback",
+            type(exc).__name__,
+        )
+        log_block(
+            channel=channel, field_name=field_name, result=result,
+            retry_attempted=True, fallback_applied=True,
+        )
+        return fallback
+
     result2 = get_validator().validate(second.text)
     if result2.is_safe:
         return second.text
@@ -312,9 +331,15 @@ def preflight_pdf_data(pdf_data: dict) -> dict:
     - ``uploaded_files[].analysis``: unsafe → "". filename/type preserved.
     - LLM-derived top-level fields: unsafe → fallback (or "").
     - ``specialists[].reason``: unsafe → ``FALLBACKS.specialist_reason``.
-    - ``specialists[].preparation[]``: unsafe items dropped; if list becomes
-      empty, KB fallback is applied by the caller (this function only knows
-      about pdf_data, not the KB).
+    - ``specialists[].preparation[]``: unsafe items dropped. If the list
+      becomes empty the section simply renders shorter — preflight does
+      NOT apply a KB fallback here. KB-based preparation fallback is
+      applied at the original call site (``TriageEngine.run_triage``)
+      on first-time generation; preflight is a defence-in-depth pass
+      over already-persisted state and has no KB handle. For persisted
+      state coming through preflight, dropping unsafe items without KB
+      augmentation is the conservative choice — a shorter list is safer
+      than fabricating items from an unrelated session.
     - ``questions_for_doctor[]``: unsafe items dropped; if empty after
       filtering, replaced wholesale by ``FALLBACKS.questions_for_doctor``.
     - ``what_to_bring[]``: same policy as questions_for_doctor.

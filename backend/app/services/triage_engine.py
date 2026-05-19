@@ -210,20 +210,30 @@ class TriageEngine:
             triage = {"urgency": "medium", "medical_areas": [], "summary": ""}
 
         # Output safety: only `summary` is user-facing in this JSON.
+        # If retry fails or returns invalid JSON, we MUST NOT replace the
+        # original `triage` dict with a default — that would silently lose
+        # the urgency value (e.g. "high" → "medium") and turn a quality
+        # issue into a safety regression. Preserve the original parsed
+        # structure and only swap the unsafe field.
         summary_check = validate_output(triage.get("summary", ""))
         if not summary_check.is_safe:
             log_block(
                 channel="triage", field_name="summary", result=summary_check,
                 retry_attempted=True, fallback_applied=False,
             )
-            triage_result = await self.llm.generate(
-                prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
-                temperature=0.0, use_cache=False,
-            )
             try:
-                triage = extract_json(triage_result.text)
-            except json.JSONDecodeError:
-                triage = {"urgency": "medium", "medical_areas": [], "summary": ""}
+                triage_result = await self.llm.generate(
+                    prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
+                    temperature=0.0, use_cache=False,
+                )
+                retry_triage = extract_json(triage_result.text)
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning("Triage retry failed, preserving original: %s", e)
+                retry_triage = None
+
+            if retry_triage is not None:
+                triage = retry_triage  # retry succeeded → use it as new base
+
             summary_check2 = validate_output(triage.get("summary", ""))
             if not summary_check2.is_safe:
                 log_block(
@@ -267,14 +277,21 @@ class TriageEngine:
                     channel="routing", field_name=field_name, result=vres,
                     retry_attempted=True, fallback_applied=False,
                 )
-            routing_result = await self.llm.generate(
-                prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
-                temperature=0.0, use_cache=False,
-            )
+            # On retry failure, preserve original routing — losing
+            # specialists / specialty / priority just because the retry
+            # JSON did not parse would be a safety regression.
             try:
-                routing = extract_json(routing_result.text)
-            except json.JSONDecodeError:
-                routing = {"specialists": [], "explanation": ""}
+                routing_result = await self.llm.generate(
+                    prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
+                    temperature=0.0, use_cache=False,
+                )
+                retry_routing = extract_json(routing_result.text)
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning("Routing retry failed, preserving original: %s", e)
+                retry_routing = None
+
+            if retry_routing is not None:
+                routing = retry_routing  # retry succeeded → use it as new base
             r_expl2 = validate_output(routing.get("explanation", ""))
             if not r_expl2.is_safe:
                 log_block(
@@ -475,21 +492,21 @@ class TriageEngine:
                     channel="pdf_summary", field_name=fname, result=vres,
                     retry_attempted=True, fallback_applied=False,
                 )
+            # On retry failure: preserve the originally-parsed dict. Per-field
+            # validation below will swap unsafe fields for their fallbacks
+            # while leaving safe fields from the first call intact.
             try:
                 result = await self.llm.generate(
                     prompt, system + "\n\n" + REINFORCED_SAFETY_RULES,
                     temperature=0.0, use_cache=False,
                 )
-                parsed = extract_json(result.text)
+                retry_parsed = extract_json(result.text)
             except (json.JSONDecodeError, Exception) as e:
-                logger.warning("PDF summary retry failed: %s", e)
-                parsed = {
-                    "complaints_medical": "",
-                    "complaints_simple": session_state.get("triage", {}).get("summary", ""),
-                    "timeline": "",
-                    "questions_for_doctor": [],
-                    "what_to_bring": [],
-                }
+                logger.warning("PDF summary retry failed, preserving original: %s", e)
+                retry_parsed = None
+
+            if retry_parsed is not None:
+                parsed = retry_parsed  # retry succeeded → use it as new base
             # Per-field fallback for anything still unsafe.
             r_cs = validate_output(parsed.get("complaints_simple", "") or "")
             if not r_cs.is_safe:
