@@ -68,6 +68,99 @@ class TestNonsenseInputRejection:
         assert "опишите словами" not in result["response"]
 
 
+class TestNumericClarificationAnswers:
+    """Context-aware nonsense guard: numeric / short replies are accepted
+    when the session is already in a clarification dialogue, but rejected
+    when sent as a first message without context. Symbols-only stays
+    rejected either way."""
+
+    @pytest.mark.asyncio
+    async def test_numeric_first_message_still_rejected(self):
+        engine = _make_engine()
+        result = await engine.process_message("33", {})
+        assert result["status"] == "collecting"
+        assert "опишите словами" in result["response"]
+        engine.llm.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_numeric_answer_after_clarification_is_not_rejected(self):
+        engine = _make_engine()
+        result = await engine.process_message("33", {
+            "clarification_count": 1,
+            "history": "Ассистент: Сколько вам лет?",
+        })
+        # Helper let it through → process_message proceeded to the LLM
+        # extraction step. Exact response from there is mocked; what
+        # matters is that the static nonsense fallback was NOT used.
+        assert "опишите словами" not in result["response"]
+        engine.llm.generate.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_temperature_numeric_answer_after_clarification_is_not_rejected(self):
+        engine = _make_engine()
+        result = await engine.process_message("37.0", {
+            "clarification_count": 1,
+            "history": "Ассистент: Какая у вас температура?",
+        })
+        assert "опишите словами" not in result["response"]
+        engine.llm.generate.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_pain_scale_answer_after_clarification_is_not_rejected(self):
+        engine = _make_engine()
+        result = await engine.process_message("5/10", {
+            "clarification_count": 1,
+            "history": "Ассистент: Оцените боль от 1 до 10?",
+        })
+        assert "опишите словами" not in result["response"]
+        engine.llm.generate.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_symbols_only_still_rejected_even_with_context(self):
+        engine = _make_engine()
+        result = await engine.process_message("!!!", {
+            "clarification_count": 1,
+            "history": "Ассистент: Когда это началось?",
+        })
+        # No alphanumeric content → still nonsense even in context.
+        assert "опишите словами" in result["response"]
+        engine.llm.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_digit_plus_word_answer_allowed(self):
+        # "10 дней" has 4 cyrillic letters → already passes the >= 2
+        # letters fast path without needing context. Asserted explicitly
+        # so a future change to the letter threshold does not regress
+        # this case silently.
+        engine = _make_engine()
+        result = await engine.process_message("10 дней", {
+            "clarification_count": 1,
+            "history": "Ассистент: Сколько это длится?",
+        })
+        assert "опишите словами" not in result["response"]
+        engine.llm.generate.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_existing_nonsense_behavior_preserved(self):
+        # Plain dots with no context — original behaviour, must still drop.
+        engine = _make_engine()
+        result = await engine.process_message("...", {})
+        assert "опишите словами" in result["response"]
+        engine.llm.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_numeric_answer_with_only_symptoms_context_is_not_rejected(self):
+        # An assistant turn might not have been recorded yet, but if
+        # symptoms were already extracted from the first patient message,
+        # we are clearly past the no-context state. Numeric reply passes.
+        engine = _make_engine()
+        result = await engine.process_message("33", {
+            "symptoms": [{"name": "головная боль", "area": "head"}],
+        })
+        assert "опишите словами" not in result["response"]
+        engine.llm.generate.assert_called()
+
+
 class TestEmptySymptomsAfterClarifications:
     """Fix #1: don't say 'ready' when no symptoms were extracted."""
 

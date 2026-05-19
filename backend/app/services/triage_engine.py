@@ -54,6 +54,47 @@ class TriageEngine:
 
     _NONSENSE_RE = re.compile(r"[а-яёa-z]", re.IGNORECASE)
 
+    @classmethod
+    def _should_reject_as_nonsense(cls, text: str, session_state: dict) -> bool:
+        """Decide whether to drop an input as obviously non-text BEFORE the LLM.
+
+        The old guard counted only letters and was state-blind: a numeric
+        reply ("33") to a clarification question ("Сколько вам лет?") was
+        rejected the same way as "33" sent as a first message. The new
+        rule is context-aware:
+
+        - If the message already carries enough letters (>= 2), it always
+          passes — same as before, "да"/"нет"/"болит" etc.
+        - Pure-whitespace or empty strings are rejected unconditionally.
+        - Otherwise we look at session_state for signs that we are inside
+          an ongoing clarification dialogue: clarification_count > 0, or
+          some symptoms were already collected, or the history carries
+          at least one "Ассистент:" turn. If yes, we accept the input
+          provided it carries at least one alphanumeric character (so
+          "33", "37.0", "5/10" pass; "!!!", "...", emoji-only do not).
+        - With no such context, behaviour is unchanged: reject anything
+          short of two letters.
+
+        Crisis / red-flag check already runs upstream and never goes
+        through here — this helper is concerned only with the nonsense
+        fallback path.
+        """
+        if not text or not text.strip():
+            return True
+        if len(cls._NONSENSE_RE.findall(text)) >= 2:
+            return False
+        in_clarification = (
+            session_state.get("clarification_count", 0) > 0
+            or bool(session_state.get("symptoms"))
+            or "Ассистент:" in (session_state.get("history") or "")
+        )
+        if not in_clarification:
+            # First message / no context — preserve original behaviour.
+            return True
+        # In-context short reply is acceptable iff it carries at least
+        # one alphanumeric token. Symbols-only ("!!!", "...") still drop.
+        return not any(ch.isalnum() for ch in text)
+
     async def process_message(
         self, text: str, session_state: dict
     ) -> dict:
@@ -67,8 +108,8 @@ class TriageEngine:
                 "is_crisis": emergency["is_crisis"],
             }
 
-        # 1.5. Reject obviously non-text input (digits, symbols only)
-        if len(self._NONSENSE_RE.findall(text)) < 2:
+        # 1.5. Reject obviously non-text input — context-aware (see helper).
+        if self._should_reject_as_nonsense(text, session_state):
             return {
                 "response": "Пожалуйста, опишите словами, что вас беспокоит — "
                             "например, «болит голова» или «температура и кашель».",
