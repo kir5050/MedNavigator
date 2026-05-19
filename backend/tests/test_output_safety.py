@@ -491,6 +491,29 @@ class TestChatClarificationFilter:
 # ---------------------------------------------------------------------------
 
 
+class TestLegalGuardrailsHardening:
+    """The legal guardrails block in prompts/templates.py was hardened in
+    feat/pdf-redesign to remove the yellow-zone example phrase and to
+    explicitly forbid causal-association framing. Guard against accidental
+    revert."""
+
+    def test_old_causal_association_example_removed(self):
+        from app.prompts.templates import LEGAL_GUARDRAILS
+        # The pre-redesign rule 3 actively taught the LLM to use this
+        # exact phrasing. It must not reappear in guardrails.
+        assert "ваши симптомы могут быть связаны с" not in LEGAL_GUARDRAILS
+
+    def test_new_rule_against_causal_hypotheses_present(self):
+        from app.prompts.templates import LEGAL_GUARDRAILS
+        assert "не выдвигай гипотезы о причинах симптомов" in LEGAL_GUARDRAILS
+        assert "системами или органами" in LEGAL_GUARDRAILS
+
+    def test_neutral_rule_3_phrasing_present(self):
+        from app.prompts.templates import LEGAL_GUARDRAILS
+        assert "рекомендуется обратиться к врачу" in LEGAL_GUARDRAILS
+        assert "лучше обсудить с врачом очно" in LEGAL_GUARDRAILS
+
+
 class TestFileAnalysisPrompt:
     """The inline prompt for file analysis (upload endpoint) must no longer
     request ICD codes / diagnoses verbatim. This is a regression test
