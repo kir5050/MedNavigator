@@ -45,6 +45,22 @@ class TestStaticContent:
     def test_questions_for_doctor_within_brief_limit(self):
         assert 1 <= len(QUESTIONS_FOR_DOCTOR) <= 3
 
+    def test_questions_for_doctor_canonical_text(self):
+        """Regression: protect static doctor questions from accidental drift.
+        Each question's distinctive substring is asserted — full-text
+        equality would be too brittle for minor punctuation fixes."""
+        assert len(QUESTIONS_FOR_DOCTOR) == 3
+        assert "следующим шагом" in QUESTIONS_FOR_DOCTOR[0]
+        assert "как меняется состояние" in QUESTIONS_FOR_DOCTOR[1]
+        assert "другому специалисту" in QUESTIONS_FOR_DOCTOR[2]
+        # Old wording must not return — it leaned the patient toward
+        # asking the doctor to enumerate red-flag signs, which is the
+        # exact medical-agenda framing the redesign removes.
+        for q in QUESTIONS_FOR_DOCTOR:
+            assert "наблюдать симптомы" not in q
+            assert "обращать внимание" not in q
+            assert "насторожить" not in q
+
     def test_urgent_care_block_mentions_emergency_numbers(self):
         assert "103" in URGENT_CARE_BLOCK
         assert "112" in URGENT_CARE_BLOCK

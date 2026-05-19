@@ -55,7 +55,7 @@ PREPARATION_CHECKLIST: list[str] = [
 # Brief §3.6 — generic, 2-3 max. No medical agenda, no directed differential.
 QUESTIONS_FOR_DOCTOR: list[str] = [
     "Что может быть следующим шагом в моей ситуации?",
-    "Нужно ли наблюдать симптомы и на что обращать внимание?",
+    "Нужно ли наблюдать, как меняется состояние?",
     "Нужно ли мне обратиться к другому специалисту?",
 ]
 
