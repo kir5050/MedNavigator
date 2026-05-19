@@ -16,10 +16,29 @@ fields that survive into the view model.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from app.medical_kb.knowledge_base import MedicalKB
 from app.services.output_safety import log_block, validate_output
+
+
+# Substring matching threshold. Synonyms shorter than this do NOT participate
+# in the substring fallback path — they are accepted only via exact-key
+# lookup. This protects the route PDF from false-positive matches against
+# short KB synonyms like "жар" (3), "37" (2), "зуд" (3): otherwise an
+# unrelated input like "пожар на кухне" or "архив 37" could be tagged
+# with a medical canonical label. Exact-lookup still accepts short
+# synonyms when the input is a clean single-token match.
+_SUBSTRING_MIN_LEN = 6
+
+
+# Map of normalised KB form → KB symptom key. Built lazily, once per KB
+# instance, via the cache below. Each KB form is the canonical name OR
+# any synonym, run through ``_normalize_for_match``. Sorted (in the
+# matching loop, not here) by length descending so more specific forms
+# match before less specific ones.
+_searchable_forms_cache: dict[int, list[tuple[str, str]]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -173,35 +192,107 @@ def _split_specialists(specialists: list) -> tuple[dict | None, list[dict]]:
     return primary, secondary
 
 
+def _normalize_for_match(text: str) -> str:
+    """Canonicalise patient/LLM text for KB lookup.
+    Lower-case, ё→е, collapse internal whitespace, trim leading/trailing
+    spaces and decorative punctuation. Digits, dots and commas inside the
+    string are kept so callers can still recognise forms like
+    "температура 37.0" via substring matching."""
+    if not text:
+        return ""
+    s = text.strip().lower().replace("ё", "е")
+    s = re.sub(r"\s+", " ", s)
+    s = s.strip(" \t\r\n.,;:!?\"'()«»—–-")
+    return s
+
+
+def _searchable_forms(kb: MedicalKB) -> list[tuple[str, str]]:
+    """Return a list of (normalised_form, kb_key) covering canonical names
+    plus all synonyms. Sorted by form length descending so more specific
+    matches win. Built once per kb instance, cached by id(kb)."""
+    cached = _searchable_forms_cache.get(id(kb))
+    if cached is not None:
+        return cached
+    forms: list[tuple[str, str]] = []
+    for key, data in kb.symptoms.items():
+        name = _normalize_for_match(data.get("name", ""))
+        if name:
+            forms.append((name, key))
+        for syn in data.get("synonyms", []) or []:
+            n = _normalize_for_match(str(syn))
+            if n:
+                forms.append((n, key))
+    forms.sort(key=lambda t: len(t[0]), reverse=True)
+    _searchable_forms_cache[id(kb)] = forms
+    return forms
+
+
 def _normalize_symptoms(state_symptoms: list, kb: MedicalKB) -> list[str]:
     """Deduplicated patient-language symptom list for the "Что вы описали"
-    section. Resolves each LLM-extracted symptom name through the KB
-    synonym index to the canonical patient-friendly name from
-    ``symptoms.yaml``. Symptoms outside the KB are accepted only if they
-    pass ``validate_output`` — patient-language phrasing typically does."""
-    seen: set[str] = set()
+    section.
+
+    Resolution order, per symptom:
+      1. Exact match of the normalised raw name against the KB synonym
+         index (covers clean single-form inputs).
+      2. Deterministic substring match against KB canonical+synonym
+         forms of length >= ``_SUBSTRING_MIN_LEN``, sorted longest-first.
+         This rescues inputs like "температура 37.0" where the synonym
+         ("температура") exists but exact lookup misses the suffixed
+         form, and inputs like "сильно болит голова" that wrap a known
+         synonym in extra patient context.
+      3. If no KB match: fall back to the raw name, but only if it passes
+         ``validate_output`` — drops LLM-poisoned names like
+         "у вас вероятно гастрит".
+
+    Deduplication uses the KB key when matched (so "Головная боль",
+    "болит голова" and "боль в голове" collapse to one entry), otherwise
+    the normalised raw label."""
+    seen_keys: set[str] = set()       # for KB-matched entries
+    seen_labels: set[str] = set()     # for raw fallback entries
     out: list[str] = []
+
     for s in state_symptoms:
         if not isinstance(s, dict):
             continue
         raw = (s.get("name") or "").strip()
         if not raw:
             continue
-        key = kb._synonym_index.get(raw.lower())
-        if key and key in kb.symptoms:
-            label = kb.symptoms[key].get("name", "").strip() or raw
-        else:
-            # Fallback: raw extracted name, only if it would not breach
-            # output_safety (e.g. an LLM that decided to write "цефалгия"
-            # gets dropped here rather than reaching the PDF).
-            r = validate_output(raw)
-            if not r.is_safe:
-                continue
-            label = raw
-        key_norm = label.lower()
-        if key_norm in seen:
+
+        normalised = _normalize_for_match(raw)
+        if not normalised:
             continue
-        seen.add(key_norm)
+
+        # 1. Exact key lookup against the KB synonym index (already
+        # lower-cased; ё→е applied here makes the lookup case- and
+        # ё-tolerant compared to the bare _synonym_index).
+        key = kb._synonym_index.get(normalised)
+
+        # 2. Substring fallback against KB forms >= min-length.
+        if not (key and key in kb.symptoms):
+            for form, form_key in _searchable_forms(kb):
+                if len(form) < _SUBSTRING_MIN_LEN:
+                    break  # forms are sorted desc by length; we're done
+                if form in normalised:
+                    key = form_key
+                    break
+
+        if key and key in kb.symptoms:
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            out.append(kb.symptoms[key].get("name", "").strip() or raw)
+            continue
+
+        # 3. No KB match — accept raw only if it would not breach
+        # output_safety (e.g. an LLM that decided to write "цефалгия"
+        # or "примите парацетамол" gets dropped here, not the PDF).
+        r = validate_output(raw)
+        if not r.is_safe:
+            continue
+        label = raw
+        if normalised in seen_labels:
+            continue
+        seen_labels.add(normalised)
         out.append(label)
     return out
 

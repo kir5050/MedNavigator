@@ -144,6 +144,35 @@ class TestPDFRedesignContent:
         assert "Кашель" in html
         assert "Тошнота" in html
 
+    def test_demo_case_html_no_duplicates_no_raw_forms(self, kb):
+        # Regression for the demo-case PDF reported on prod: raw synonym
+        # of headache and a temperature-with-value were leaking into the
+        # bullet list alongside the canonical labels. After this fix the
+        # bullet list must be the clean canonical-only set.
+        vm = build_view_model(
+            {
+                "triage": {"urgency": "medium"},
+                "routing": {"specialists": [{"specialty": "Терапевт"}]},
+                "symptoms": [
+                    {"name": "Головная боль"},
+                    {"name": "Кашель"},
+                    {"name": "боль в голове"},
+                    {"name": "температура 37.0"},
+                ],
+            },
+            "def67890", kb,
+        )
+        html = PDFGenerator._build_html(vm, "def67890")
+
+        # Canonical labels appear, each exactly once.
+        assert html.count("<li>Головная боль</li>") == 1
+        assert html.count("<li>Кашель</li>") == 1
+        assert html.count("<li>Повышенная температура</li>") == 1
+        # Raw forms must NOT leak into the rendered list.
+        assert "боль в голове" not in html
+        assert "температура 37.0" not in html
+        assert "37.0" not in html
+
     def test_urgent_care_block_is_static_verbatim(self, kb, non_crisis_state):
         vm = build_view_model(non_crisis_state, "def67890", kb)
         html = PDFGenerator._build_html(vm, "def67890")
