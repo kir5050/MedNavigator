@@ -30,6 +30,7 @@ from app.models.database import (
     get_session_maker,
 )
 from app.pdf import PDFGenerator
+from app.services.output_safety import FALLBACKS, safe_generate_text
 from app.services.triage_engine import TriageEngine
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
@@ -373,24 +374,40 @@ async def upload_file(request: Request, session_id: str, file: UploadFile = File
 
     analysis = ""
 
-    file_analysis_system = """Ты — медицинский информационный ассистент. Пациент прислал документ.
-Извлеки медицинские данные для внутреннего использования (НЕ для показа пациенту):
+    file_analysis_system = """Ты — медицинский ассистент. Пациент загрузил документ.
+
+Извлеки факты для контекста маршрутизации (НЕ для показа пациенту):
 - Тип документа (анализы, снимок, заключение, рецепт)
-- Диагнозы, если указаны (код МКБ)
-- Ключевые показатели и отклонения от нормы
-- Назначения/рекомендации
-Ответь КРАТКО, списком фактов."""
+- Какие показатели или жалобы упомянуты, и какие из них отклоняются от ожидаемого
+- К каким областям медицины относится содержание
+
+НЕ копируй и НЕ называй диагнозы, коды МКБ, названия лекарств или дозировки.
+Если в документе они есть — опиши факт нейтрально:
+«документ содержит ранее поставленное врачом заключение»,
+«документ содержит назначение от врача»,
+«документ содержит данные анализов».
+
+Ответь КРАТКО, списком фактов в свободной форме.""".strip()
 
     # Analyze images via LLM vision
     if content_type.startswith("image/"):
         b64 = base64.b64encode(content).decode()
         images = [{"media_type": content_type, "data": b64}]
         try:
-            result = await triage_engine.llm.generate(
-                "Извлеки медицинские данные из этого изображения.",
-                file_analysis_system, images=images, use_cache=False,
+            llm = triage_engine.llm
+
+            async def _call_image(sys_arg, *, temperature, use_cache):
+                return await llm.generate(
+                    "Извлеки медицинские данные из этого изображения.",
+                    sys_arg, temperature=temperature, use_cache=use_cache,
+                    images=images,
+                )
+
+            analysis = await safe_generate_text(
+                _call_image, file_analysis_system,
+                channel="file_analysis", field_name="image",
+                fallback=FALLBACKS.file_analysis,
             )
-            analysis = result.text
         except Exception as e:
             logger.warning("Image analysis failed: %s", e)
 
@@ -405,11 +422,20 @@ async def upload_file(request: Request, session_id: str, file: UploadFile = File
             doc.close()
 
             if pdf_text.strip():
-                result = await triage_engine.llm.generate(
-                    f"Извлеки медицинские данные из этого документа:\n\n{pdf_text[:4000]}",
-                    file_analysis_system, use_cache=False,
+                llm = triage_engine.llm
+                pdf_prompt = f"Извлеки медицинские данные из этого документа:\n\n{pdf_text[:4000]}"
+
+                async def _call_pdf(sys_arg, *, temperature, use_cache):
+                    return await llm.generate(
+                        pdf_prompt, sys_arg,
+                        temperature=temperature, use_cache=use_cache,
+                    )
+
+                analysis = await safe_generate_text(
+                    _call_pdf, file_analysis_system,
+                    channel="file_analysis", field_name="pdf",
+                    fallback=FALLBACKS.file_analysis,
                 )
-                analysis = result.text
             else:
                 analysis = "PDF без текста — возможно отсканированный документ."
         except Exception as e:

@@ -5,6 +5,7 @@ import re
 from app.llm.manager import LLMManager
 from app.medical_kb import MedicalKB
 from app.prompts import PromptTemplates
+from app.services.output_safety import FALLBACKS, safe_generate_text
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +107,21 @@ class TriageEngine:
             system, prompt = PromptTemplates.clarification(
                 json.dumps(all_symptoms, ensure_ascii=False), history
             )
-            clarification = await self.llm.generate(prompt, system, use_cache=False)
+
+            llm = self.llm
+
+            async def _call(sys_arg, *, temperature, use_cache):
+                return await llm.generate(
+                    prompt, sys_arg, temperature=temperature, use_cache=use_cache,
+                )
+
+            clarification_text = await safe_generate_text(
+                _call, system,
+                channel="chat", field_name="clarification",
+                fallback=FALLBACKS.chat_clarification,
+            )
             return {
-                "response": clarification.text,
+                "response": clarification_text,
                 "status": "collecting",
                 "is_emergency": False,
                 "symptoms": all_symptoms,

@@ -397,3 +397,134 @@ class TestPDFPreflight:
         out = preflight_pdf_data(pdf_data)
         assert pdf_data["routing_explanation"] == "У вас, вероятно, гастрит"
         assert out is not pdf_data
+
+
+# ---------------------------------------------------------------------------
+# Chat channel — process_message clarification path
+# ---------------------------------------------------------------------------
+
+
+def _make_triage_engine(llm_response_text: str | list[str]):
+    """Build TriageEngine with a mock LLM that returns predetermined text.
+    Pass a list to model successive responses (first call, retry, etc.).
+    """
+    from app.medical_kb.knowledge_base import MedicalKB
+    from app.services.triage_engine import TriageEngine
+
+    llm = MagicMock()
+    if isinstance(llm_response_text, str):
+        llm.generate = AsyncMock(return_value=_resp(llm_response_text))
+    else:
+        llm.generate = AsyncMock(side_effect=[_resp(t) for t in llm_response_text])
+    return TriageEngine(llm=llm, kb=MedicalKB())
+
+
+@pytest.mark.asyncio
+class TestChatClarificationFilter:
+    async def test_unsafe_clarification_retry_safe_returns_retry_text(self):
+        # symptom_extraction returns enough symptoms to reach clarification stage,
+        # then clarification LLM call returns unsafe first, safe on retry.
+        engine = _make_triage_engine([
+            # 1st call: symptom_extraction
+            '{"symptoms": [{"name": "головная боль"}], "needs_clarification": true}',
+            # 2nd call: clarification (unsafe)
+            "Примите парацетамол при головной боли.",
+            # 3rd call: retry clarification (safe)
+            "Когда у вас начались эти ощущения?",
+        ])
+        result = await engine.process_message("болит голова", {})
+        assert result["status"] == "collecting"
+        assert result["response"] == "Когда у вас начались эти ощущения?"
+
+    async def test_unsafe_clarification_retry_unsafe_returns_fallback(self):
+        engine = _make_triage_engine([
+            '{"symptoms": [{"name": "головная боль"}], "needs_clarification": true}',
+            "Примите парацетамол при головной боли.",
+            "Выпейте нурофен по 1 таблетке.",  # retry also unsafe
+        ])
+        result = await engine.process_message("болит голова", {})
+        assert result["status"] == "collecting"
+        assert result["response"] == FALLBACKS.chat_clarification
+
+    async def test_safe_clarification_passes_through_unchanged(self):
+        engine = _make_triage_engine([
+            '{"symptoms": [{"name": "головная боль"}], "needs_clarification": true}',
+            "Расскажите, как давно это происходит.",
+        ])
+        result = await engine.process_message("болит голова", {})
+        assert result["response"] == "Расскажите, как давно это происходит."
+        # LLM called twice (extraction + clarification), no retry.
+        assert engine.llm.generate.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# file_analysis prompt — regression on regulatory framing
+# ---------------------------------------------------------------------------
+
+
+class TestFileAnalysisPrompt:
+    """The inline prompt for file analysis (upload endpoint) must no longer
+    request ICD codes / diagnoses verbatim. This is a regression test
+    against accidental revert of the regulatory tightening."""
+
+    def test_prompt_does_not_request_icd_codes(self):
+        # Inspect the source of main.py to confirm the prompt no longer
+        # contains the "Диагнозы, если указаны (код МКБ)" line.
+        # We compare on substring of the rendered prompt string.
+        from app import main as main_module
+        source = Path(main_module.__file__).read_text(encoding="utf-8")
+        # Old line removed:
+        assert "Диагнозы, если указаны (код МКБ)" not in source
+        # New neutral framing present:
+        assert "НЕ копируй и НЕ называй диагнозы" in source
+        assert "документ содержит ранее поставленное врачом заключение" in source
+
+
+# ---------------------------------------------------------------------------
+# _build_documents_section — disclaimer + filename-without-analysis
+# ---------------------------------------------------------------------------
+
+
+class TestDocumentsSectionAlwaysDisclaimer:
+    def test_empty_uploaded_files_returns_empty(self):
+        from app.pdf.generator import PDFGenerator
+        assert PDFGenerator._build_documents_section({"uploaded_files": []}) == ""
+
+    def test_disclaimer_present_when_files_with_safe_analysis(self):
+        from app.pdf.generator import PDFGenerator
+        html = PDFGenerator._build_documents_section({
+            "uploaded_files": [
+                {"filename": "a.pdf", "analysis": "документ содержит данные анализов"},
+            ],
+        })
+        assert "docs-disclaimer" in html
+        assert "врач увидит оригиналы на приёме" in html
+        assert "a.pdf" in html
+        assert "документ содержит данные анализов" in html
+
+    def test_disclaimer_present_when_files_have_empty_analysis(self):
+        from app.pdf.generator import PDFGenerator
+        html = PDFGenerator._build_documents_section({
+            "uploaded_files": [
+                {"filename": "b.jpg", "analysis": ""},
+            ],
+        })
+        # Even with no analysis text, the upload itself is preserved (filename)
+        # and the disclaimer is rendered. The fact of upload is information.
+        assert "docs-disclaimer" in html
+        assert "b.jpg" in html
+
+    def test_no_analysis_paragraph_when_analysis_empty(self):
+        from app.pdf.generator import PDFGenerator
+        html = PDFGenerator._build_documents_section({
+            "uploaded_files": [
+                {"filename": "c.pdf", "analysis": ""},
+            ],
+        })
+        # Filename in <h3>, but no <p> with analysis content
+        assert "<h3>c.pdf</h3>" in html
+        # No paragraph paragraph after the filename card
+        # (presence of any '<p>' inside the per-file card)
+        per_file_card_start = html.index("<h3>c.pdf</h3>")
+        card_remainder = html[per_file_card_start:]
+        assert "<p>" not in card_remainder.split("</div>")[0]
