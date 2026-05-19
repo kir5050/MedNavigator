@@ -144,6 +144,16 @@ async def startup():
             except Exception:
                 pass  # Column already exists
 
+            # output_safety v1: always wipe pdf_cache on startup to avoid
+            # serving stale unsafe cached PDFs. This wipes safe cached
+            # PDFs too, which is acceptable in MVP (pre-revenue, no real
+            # user impact — next PDF request regenerates and re-caches).
+            # NOT an idempotent one-shot migration: runs on every backend
+            # restart by design, until cache versioning is introduced.
+            await conn.execute(text(
+                "UPDATE triage_results SET pdf_cache = NULL, pdf_generated_at = NULL"
+            ))
+
         logger.info("Database initialized: %s", settings.database_url)
 
         providers = build_providers()

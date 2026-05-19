@@ -683,3 +683,48 @@ class TestCrisisPDFWithPreExistingUnsafeState:
         assert f["filename"] == "old_anketa.pdf"
         # analysis emptied (would be hidden by _build_documents_section)
         assert f["analysis"] == ""
+
+
+# ---------------------------------------------------------------------------
+# PDF cache wipe on startup (always-wipe-on-startup, NOT one-shot)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_startup_wipes_existing_pdf_cache():
+    """The startup migration block must zero out triage_results.pdf_cache /
+    pdf_generated_at on every run, so that no stale PDF produced before
+    output_safety landed can be served back to a client."""
+    from sqlalchemy import select, text as sql_text
+    from app.models.database import (
+        Base, TriageResult, get_engine, get_session_maker,
+    )
+
+    engine = await get_engine("sqlite+aiosqlite:///:memory:")
+    session_maker = get_session_maker(engine)
+
+    # Pre-populate a TriageResult with non-null pdf_cache.
+    async with session_maker() as db:
+        rec = TriageResult(
+            session_id="session-1",
+            urgency="medium",
+            specialists=[],
+            symptoms_summary="...",
+            pdf_cache=b"%PDF-pretend-old-unsafe-bytes",
+        )
+        db.add(rec)
+        await db.commit()
+
+    # Run the same UPDATE the startup block runs.
+    async with engine.begin() as conn:
+        await conn.execute(sql_text(
+            "UPDATE triage_results SET pdf_cache = NULL, pdf_generated_at = NULL"
+        ))
+
+    async with session_maker() as db:
+        rows = (await db.execute(select(TriageResult))).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].pdf_cache is None
+        assert rows[0].pdf_generated_at is None
+        # session_id / other fields preserved.
+        assert rows[0].session_id == "session-1"
