@@ -14,6 +14,7 @@ interface TriageData {
   urgency: 'low' | 'medium' | 'high' | 'emergency'
   specialists: Specialist[]
   symptomsSummary: string
+  userMessages: string[]
 }
 
 interface Props {
@@ -160,10 +161,31 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
         return
       }
 
+      // Collect literal user-authored text for the result screen. Strip the
+      // "📎 filename" prefix that we prepend client-side when the user attaches
+      // a file with no caption — that's not the patient's description, it's a
+      // service line. Keep messages that have actual user text after the
+      // attach prefix (file + caption case).
+      const userMessages = messages
+        .filter((m) => m.role === 'user')
+        .map((m) => {
+          const text = m.text
+          // Pattern: "📎 filename" (alone) — service-only, drop.
+          // Pattern: "📎 filename\n<user text>" — keep only "<user text>".
+          if (text.startsWith('📎 ')) {
+            const nl = text.indexOf('\n')
+            if (nl === -1) return '' // attachment-only message
+            return text.slice(nl + 1).trim()
+          }
+          return text.trim()
+        })
+        .filter((t) => t.length > 0)
+
       onComplete({
         urgency: result.urgency,
         specialists: result.specialists,
         symptomsSummary: result.symptoms_summary,
+        userMessages,
       })
     } catch {
       setMessages((prev) => [

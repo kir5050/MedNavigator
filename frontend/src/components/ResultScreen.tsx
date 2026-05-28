@@ -1,31 +1,42 @@
 /**
  * ResultScreen — HTML-вариант маршрутного листа.
  *
- * PDF reconcile (см. backend/app/pdf/view_model.py) — НЕ создаём
- * второй противоречащий формат, но известные расхождения:
+ * Safety divergences vs backend/app/pdf/view_model.py — current state:
  *
- *  - "Жалобы" здесь = `triage.symptoms_summary` (LLM-summary),
- *    в PDF = `what_patient_described` (KB-normalised symptom list).
- *  - "Специалист.reason" здесь рендерится из ответа /triage напрямую;
- *    в PDF этот LLM-текст СОЗНАТЕЛЬНО заменяется на статический
- *    `PRIMARY_ROUTE_ONE_LINER` для безопасности.
- *  - "Подготовка" здесь = `spec.preparation` (per-specialist, из KB);
- *    в PDF используется единый статический `PREPARATION_CHECKLIST` (4 пункта).
- *  - В PDF есть отдельные блоки `QUESTIONS_FOR_DOCTOR` и `URGENT_CARE_BLOCK`,
- *    в этом экране их нет.
- *  - Дисклеймер: здесь — каноническая строка из CLAUDE.md §3 (через `Disclaimer`),
- *    в PDF — собственная редакция (`view_model.DISCLAIMER`). Обе говорят одно и
- *    то же, но текст отличается.
+ *  - raw `spec.reason` (LLM-generated) is INTENTIONALLY NOT RENDERED.
+ *    Under the primary specialist we show the same static safe one-liner
+ *    that view_model.py uses (`PRIMARY_ROUTE_ONE_LINER`). Secondary
+ *    specialists are name-only — no LLM reasoning surfaces.
  *
- * TODO (после approval) — выровнять либо frontend под view_model, либо
- * наоборот. В этом PR backend НЕ трогаем; расхождения зафиксированы здесь
- * и в описании PR.
+ *  - `symptomsSummary` (LLM-generated triage summary) is INTENTIONALLY NOT
+ *    USED as the primary "Что вы описали" section. That section is built
+ *    from the patient's own chat messages (verbatim, with attachment
+ *    service lines stripped). `symptomsSummary` is used ONLY as a fallback
+ *    when the user-message transcript is unavailable (e.g. cold reload
+ *    onto /result) — clearly marked and labelled differently in the UI.
  *
- * Emergency-PDF branch: бэкенд имеет `is_crisis_only` ветку PDF (history +
- * red_flags). В новом crisis-flow PDF CTA скрыт — это сознательно и не
- * регрессия (старый ResultScreen тоже прятал PDF при `urgency === 'emergency'`).
- * Crisis-PDF остаётся доступным напрямую по URL `/api/v1/session/{id}/pdf`,
- * но из UI на него никто не выводит. Решение по этой ветке — отдельным PR.
+ *  - `preparation` checklist is the SHARED STATIC list from
+ *    view_model.PREPARATION_CHECKLIST (4 generic items). Per-specialist
+ *    `spec.preparation[]` from /triage is LLM-generated (see
+ *    backend/app/services/triage_engine.py:413) — validated by
+ *    output_safety but not curated KB. We do not render it here.
+ *
+ *  - Session ID: `sessionId.slice(0, 8)` — same algorithm as
+ *    view_model.session_id_short.
+ *
+ *  - Disclaimer wording still differs (canonical CLAUDE.md §3 string here
+ *    vs view_model.DISCLAIMER). Reconcile in a separate PR.
+ *
+ *  - `QUESTIONS_FOR_DOCTOR` and `URGENT_CARE_BLOCK` from PDF view model
+ *    are NOT mirrored on this screen yet.
+ *
+ *  - Frontend still does not consume a shared route view model from
+ *    backend. TODO: expose sanitized route view model from backend to
+ *    frontend so PDF and UI cannot drift.
+ *
+ *  - Emergency PDF branch: `is_crisis_only` PDF remains accessible via
+ *    direct URL; CrisisScreen does not surface a PDF CTA. Decision on
+ *    that flow — separate PR.
  */
 
 import { useState, useEffect } from 'react'
@@ -40,6 +51,7 @@ interface TriageData {
   urgency: 'low' | 'medium' | 'high' | 'emergency'
   specialists: Specialist[]
   symptomsSummary: string
+  userMessages: string[]
 }
 
 interface Props {
@@ -62,10 +74,24 @@ const URGENCY_HINT: Record<TriageData['urgency'], string> = {
   low: 'Можно обратиться планово.',
 }
 
-function shortSession(id: string): string {
-  if (!id) return ''
-  return id.replace(/-/g, '').slice(0, 8).toUpperCase()
-}
+/**
+ * Static safe one-liner under the primary specialist. Verbatim copy of
+ * backend/app/pdf/view_model.PRIMARY_ROUTE_ONE_LINER — reused from the PDF
+ * view model on purpose (Brief §3.2).
+ */
+const PRIMARY_ROUTE_ONE_LINER =
+  'Это подходящий первый специалист для очной оценки описанных жалоб и решения, нужен ли другой врач.'
+
+/**
+ * Shared preparation checklist (max 5, not per-specialty). Verbatim copy of
+ * backend/app/pdf/view_model.PREPARATION_CHECKLIST. Brief §3.5.
+ */
+const PREPARATION_CHECKLIST: readonly string[] = [
+  'вспомните, когда начались жалобы',
+  'отметьте, что усиливает или уменьшает симптомы',
+  'возьмите список лекарств, витаминов и добавок',
+  'возьмите прошлые анализы, снимки или выписки, если они есть',
+]
 
 export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
   const [result, setResult] = useState<TriageData>(triageData)
@@ -74,13 +100,19 @@ export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
   const [feedbackSent, setFeedbackSent] = useState(false)
 
   useEffect(() => {
+    // Cold-load case: /result reached without going through ChatScreen
+    // (e.g. browser reload). The /result endpoint does NOT echo back the
+    // patient's chat transcript, so userMessages stays as whatever the
+    // caller passed (likely []), and we'll fall back to symptomsSummary
+    // with a clearly different label.
     getResult(sessionId)
       .then((data) => {
-        setResult({
+        setResult((prev) => ({
           urgency: data.urgency,
           specialists: data.specialists,
           symptomsSummary: data.symptoms_summary,
-        })
+          userMessages: prev.userMessages, // preserve what ChatScreen handed us
+        }))
       })
       .catch(() => {})
   }, [sessionId])
@@ -105,6 +137,18 @@ export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
     )
   }
 
+  // Primary spec gets the safe static one-liner; secondaries — name only.
+  const primary = result.specialists[0]
+  const secondary = result.specialists.slice(1, 3)
+
+  // "Что вы описали" — built from patient's own chat messages.
+  // Fallback to LLM-generated symptomsSummary ONLY when transcript is
+  // unavailable (cold reload). UI labels the fallback differently so it
+  // is not implied to be the patient's literal words.
+  // TODO: expose sanitized `what_patient_described` from backend so this
+  // section can consume the same KB-normalised list as the PDF view model.
+  const hasUserTranscript = result.userMessages.length > 0
+
   return (
     <>
       <AppHeader />
@@ -118,14 +162,28 @@ export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
               <h2>MedNavigator</h2>
             </div>
             <div className="result-session" aria-label="Идентификатор сессии">
-              сессия<br /><b>#{shortSession(sessionId)}</b>
+              сессия<br /><b>#{sessionId.slice(0, 8)}</b>
             </div>
           </header>
 
-          {result.symptomsSummary && (
+          {(hasUserTranscript || result.symptomsSummary) && (
             <div className="result-row">
-              <div className="result-key">Жалобы</div>
-              <div className="result-val">{result.symptomsSummary}</div>
+              <div className="result-key">
+                {hasUserTranscript ? 'Ваши слова' : 'Из диалога'}
+              </div>
+              <div className="result-val">
+                {hasUserTranscript ? (
+                  <ul style={{ listStyle: 'disc', paddingLeft: 18, margin: 0 }}>
+                    {result.userMessages.map((m, i) => (
+                      <li key={i} style={{ marginBottom: i < result.userMessages.length - 1 ? 6 : 0 }}>
+                        {m}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  result.symptomsSummary
+                )}
+              </div>
             </div>
           )}
 
@@ -141,48 +199,46 @@ export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
             </div>
           </div>
 
-          {result.specialists.length > 0 && (
+          {primary && (
+            <div className="result-row">
+              <div className="result-key">Специалист</div>
+              <div className="result-val">
+                <div className="spec">
+                  <span className="spec-name">{primary.specialty}</span>
+                  <span className="spec-reason">{PRIMARY_ROUTE_ONE_LINER}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {secondary.length > 0 && (
             <div className="result-row">
               <div className="result-key">
-                {result.specialists.length === 1 ? 'Специалист' : 'Специалисты'}
+                Также рассмотрите
               </div>
               <div className="result-val">
-                {result.specialists.map((spec, i) => (
+                {secondary.map((spec, i) => (
                   <div key={i} className="spec">
                     <span className="spec-name">{spec.specialty}</span>
-                    <span className="spec-reason">{spec.reason}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {result.specialists.some((s) => s.preparation && s.preparation.length > 0) && (
-            <div className="result-row">
-              <div className="result-key">Подготовка</div>
-              <div className="result-val">
-                {result.specialists.map((spec, i) =>
-                  spec.preparation && spec.preparation.length > 0 ? (
-                    <div key={i} className="spec" style={i > 0 ? undefined : { paddingTop: 0, borderTop: 'none' }}>
-                      {result.specialists.length > 1 && (
-                        <span className="spec-reason" style={{ display: 'block', marginBottom: 4 }}>
-                          {spec.specialty}
-                        </span>
-                      )}
-                      <ul className="prep-list">
-                        {spec.preparation.map((item, j) => (
-                          <li key={j}>
-                            <input type="checkbox" id={`prep-${i}-${j}`} />
-                            <label htmlFor={`prep-${i}-${j}`}>{item}</label>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null
-                )}
-              </div>
+          <div className="result-row">
+            <div className="result-key">Подготовка</div>
+            <div className="result-val">
+              <ul className="prep-list">
+                {PREPARATION_CHECKLIST.map((item, i) => (
+                  <li key={i}>
+                    <input type="checkbox" id={`prep-${i}`} />
+                    <label htmlFor={`prep-${i}`}>{item}</label>
+                  </li>
+                ))}
+              </ul>
             </div>
-          )}
+          </div>
         </article>
 
         {/* Disclaimer — verbatim canonical string, visible (not buried fine print) */}

@@ -10,6 +10,13 @@ interface TriageData {
   urgency: 'low' | 'medium' | 'high' | 'emergency'
   specialists: Specialist[]
   symptomsSummary: string
+  /**
+   * Literal user-authored messages from the chat transcript, preserved
+   * verbatim. Used as the primary source for the "Что вы описали" section
+   * on the result screen (LLM-generated `symptomsSummary` is a hallucination
+   * surface — see ResultScreen.tsx header comment).
+   */
+  userMessages: string[]
 }
 
 /**
