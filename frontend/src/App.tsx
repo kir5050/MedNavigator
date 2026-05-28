@@ -10,8 +10,21 @@ interface TriageData {
   urgency: 'low' | 'medium' | 'high' | 'emergency'
   specialists: Specialist[]
   symptomsSummary: string
+  /**
+   * Literal user-authored messages from the chat transcript, preserved
+   * verbatim. Used as the primary source for the "Что вы описали" section
+   * on the result screen (LLM-generated `symptomsSummary` is a hallucination
+   * surface — see ResultScreen.tsx header comment).
+   */
+  userMessages: string[]
 }
 
+/**
+ * App shell — three top-level views: welcome / chat / result.
+ * Crisis is NOT a top-level route: it is a locked sub-state owned by
+ * ChatScreen and rendered via <CrisisScreen/>. This keeps the existing
+ * flow contract intact while making crisis visually distinct.
+ */
 export function App() {
   const [screen, setScreen] = useState<Screen>('welcome')
   const [sessionId, setSessionId] = useState<string>('')
@@ -19,6 +32,7 @@ export function App() {
 
   function handleSessionStart(id: string) {
     setSessionId(id)
+    setTriageData(null)
     setScreen('chat')
   }
 
@@ -35,19 +49,13 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="header">
-        <h1>MedNavigator</h1>
-      </header>
-
-      {screen === 'welcome' && (
-        <WelcomeScreen onStart={handleSessionStart} />
-      )}
+      {screen === 'welcome' && <WelcomeScreen onStart={handleSessionStart} />}
 
       {screen === 'chat' && (
         <ChatScreen
           sessionId={sessionId}
           onComplete={handleTriageComplete}
-          onEmergency={(data) => handleTriageComplete(data)}
+          onRestart={handleRestart}
         />
       )}
 
