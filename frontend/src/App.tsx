@@ -12,6 +12,12 @@ interface TriageData {
   symptomsSummary: string
 }
 
+/**
+ * App shell — three top-level views: welcome / chat / result.
+ * Crisis is NOT a top-level route: it is a locked sub-state owned by
+ * ChatScreen and rendered via <CrisisScreen/>. This keeps the existing
+ * flow contract intact while making crisis visually distinct.
+ */
 export function App() {
   const [screen, setScreen] = useState<Screen>('welcome')
   const [sessionId, setSessionId] = useState<string>('')
@@ -19,6 +25,7 @@ export function App() {
 
   function handleSessionStart(id: string) {
     setSessionId(id)
+    setTriageData(null)
     setScreen('chat')
   }
 
@@ -35,19 +42,13 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="header">
-        <h1>MedNavigator</h1>
-      </header>
-
-      {screen === 'welcome' && (
-        <WelcomeScreen onStart={handleSessionStart} />
-      )}
+      {screen === 'welcome' && <WelcomeScreen onStart={handleSessionStart} />}
 
       {screen === 'chat' && (
         <ChatScreen
           sessionId={sessionId}
           onComplete={handleTriageComplete}
-          onEmergency={(data) => handleTriageComplete(data)}
+          onRestart={handleRestart}
         />
       )}
 

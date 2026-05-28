@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { getResult, getPdfUrl, submitFeedback } from '../api/client'
 import type { Specialist } from '../api/client'
+import { AppHeader } from './shared/AppHeader'
+import { SectionNum } from './shared/SectionNum'
+import { Disclaimer } from './shared/Disclaimer'
+import { CrisisScreen } from './CrisisScreen'
 
 interface TriageData {
   urgency: 'low' | 'medium' | 'high' | 'emergency'
@@ -14,11 +18,23 @@ interface Props {
   onRestart: () => void
 }
 
-const URGENCY_LABELS: Record<string, string> = {
-  emergency: 'ЭКСТРЕННО — вызовите скорую: 103',
-  high: 'СРОЧНО — обратитесь к врачу сегодня',
-  medium: 'ПЛАНОВО — запишитесь в ближайшие дни',
-  low: 'НЕСРОЧНО — можно обратиться планово',
+const URGENCY_LABELS: Record<TriageData['urgency'], string> = {
+  emergency: 'Экстренно',
+  high: 'Срочно',
+  medium: 'Планово',
+  low: 'Несрочно',
+}
+
+const URGENCY_HINT: Record<TriageData['urgency'], string> = {
+  emergency: 'Свяжитесь со службой экстренной помощи.',
+  high: 'Обратитесь к врачу сегодня.',
+  medium: 'Запишитесь в ближайшие дни.',
+  low: 'Можно обратиться планово.',
+}
+
+function shortSession(id: string): string {
+  if (!id) return ''
+  return id.replace(/-/g, '').slice(0, 8).toUpperCase()
 }
 
 export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
@@ -44,129 +60,175 @@ export function ResultScreen({ sessionId, triageData, onRestart }: Props) {
     try {
       await submitFeedback(sessionId, feedbackRating, feedbackHelpful)
       setFeedbackSent(true)
-    } catch {}
+    } catch {
+      /* keep silent; user can retry */
+    }
+  }
+
+  // Backstop: if emergency somehow lands here, render crisis lock instead.
+  if (result.urgency === 'emergency') {
+    return (
+      <CrisisScreen
+        emergencyText={result.symptomsSummary || 'Похоже, ситуация требует экстренной помощи.'}
+        onRestart={onRestart}
+      />
+    )
   }
 
   return (
-    <div className="result">
-      {/* Urgency badge */}
-      <div className={`urgency-badge ${result.urgency}`}>
-        {URGENCY_LABELS[result.urgency]}
-      </div>
+    <>
+      <AppHeader />
+      <main className="result">
+        <SectionNum>§ 03 — Маршрут</SectionNum>
 
-      {/* Emergency call */}
-      {result.urgency === 'emergency' && (
-        <a href="tel:103" className="emergency-call" aria-label="Позвонить 103">
-          103 — Скорая помощь
-        </a>
-      )}
+        <article className="result-doc" aria-label="Маршрутный лист">
+          <header className="result-head">
+            <div>
+              <div className="result-head-label">Маршрутный лист</div>
+              <h2>MedNavigator</h2>
+            </div>
+            <div className="result-session" aria-label="Идентификатор сессии">
+              сессия<br /><b>#{shortSession(sessionId)}</b>
+            </div>
+          </header>
 
-      {/* Summary */}
-      {result.symptomsSummary && (
-        <div className="specialist-card">
-          <h3>Ваши жалобы</h3>
-          <p className="reason">{result.symptomsSummary}</p>
-        </div>
-      )}
-
-      {/* Specialists */}
-      {result.specialists.map((spec, i) => (
-        <div key={i} className="specialist-card">
-          <h3>{spec.specialty}</h3>
-          <p className="reason">{spec.reason}</p>
-          {spec.preparation && spec.preparation.length > 0 && (
-            <div className="preparation">
-              <h4>Подготовка к визиту:</h4>
-              <ul className="checklist">
-                {spec.preparation.map((item, j) => (
-                  <li key={j}>
-                    <input type="checkbox" id={`prep-${i}-${j}`} />
-                    <label htmlFor={`prep-${i}-${j}`}>{item}</label>
-                  </li>
-                ))}
-              </ul>
+          {result.symptomsSummary && (
+            <div className="result-row">
+              <div className="result-key">Жалобы</div>
+              <div className="result-val">{result.symptomsSummary}</div>
             </div>
           )}
-        </div>
-      ))}
 
-      {/* PDF Download */}
-      {result.urgency !== 'emergency' && (
-        <a
-          href={getPdfUrl(sessionId)}
-          className="pdf-btn"
-          target="_blank"
-          rel="noopener noreferrer"
-          download
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M10 3v10M6 9l4 4 4-4M4 15h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Скачать маршрутный лист (PDF)
-        </a>
-      )}
+          <div className="result-row">
+            <div className="result-key">Срочность</div>
+            <div className="result-val">
+              <span className={`urgency-pill ${result.urgency}`}>
+                {URGENCY_LABELS[result.urgency]}
+              </span>
+              <div style={{ marginTop: 6, color: 'var(--text-mute)', fontSize: 13 }}>
+                {URGENCY_HINT[result.urgency]}
+              </div>
+            </div>
+          </div>
 
-      {/* Feedback */}
-      {!feedbackSent ? (
-        <div className="feedback-card">
-          <h3>Оцените полезность маршрута</h3>
-          <div className="rating-row">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                className={`rating-btn ${feedbackRating === n ? 'active' : ''}`}
-                onClick={() => setFeedbackRating(n)}
-                aria-label={`Оценка ${n}`}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-          <p style={{ fontSize: 14, marginBottom: 8, color: '#64748B' }}>
-            Подходит ли предложенный маршрут?
-          </p>
-          <div className="helpful-row">
-            {([
-              [true, 'Да'],
-              [null, 'Частично'],
-              [false, 'Нет'],
-            ] as const).map(([val, label]) => (
-              <button
-                key={label}
-                className={`helpful-btn ${feedbackHelpful === val ? 'active' : ''}`}
-                onClick={() => setFeedbackHelpful(val)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {feedbackRating !== null && (
-            <button
-              className="btn-primary"
-              style={{ width: '100%', marginTop: 12 }}
-              onClick={handleFeedbackSubmit}
-            >
-              Отправить
-            </button>
+          {result.specialists.length > 0 && (
+            <div className="result-row">
+              <div className="result-key">
+                {result.specialists.length === 1 ? 'Специалист' : 'Специалисты'}
+              </div>
+              <div className="result-val">
+                {result.specialists.map((spec, i) => (
+                  <div key={i} className="spec">
+                    <span className="spec-name">{spec.specialty}</span>
+                    <span className="spec-reason">{spec.reason}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
-        </div>
-      ) : (
-        <div className="feedback-card" style={{ textAlign: 'center' }}>
-          <p>Спасибо за обратную связь!</p>
-        </div>
-      )}
 
-      {/* Disclaimer */}
-      <div className="disclaimer">
-        MedNavigator не ставит диагноз и не назначает лечение.
-        Информация носит справочный характер и помогает подготовиться к визиту.
-        Для постановки диагноза и назначения лечения обязательно обратитесь к врачу.
-      </div>
+          {result.specialists.some((s) => s.preparation && s.preparation.length > 0) && (
+            <div className="result-row">
+              <div className="result-key">Подготовка</div>
+              <div className="result-val">
+                {result.specialists.map((spec, i) =>
+                  spec.preparation && spec.preparation.length > 0 ? (
+                    <div key={i} className="spec" style={i > 0 ? undefined : { paddingTop: 0, borderTop: 'none' }}>
+                      {result.specialists.length > 1 && (
+                        <span className="spec-reason" style={{ display: 'block', marginBottom: 4 }}>
+                          {spec.specialty}
+                        </span>
+                      )}
+                      <ul className="prep-list">
+                        {spec.preparation.map((item, j) => (
+                          <li key={j}>
+                            <input type="checkbox" id={`prep-${i}-${j}`} />
+                            <label htmlFor={`prep-${i}-${j}`}>{item}</label>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null
+                )}
+              </div>
+            </div>
+          )}
+        </article>
 
-      {/* Restart */}
-      <button className="btn-back" onClick={onRestart}>
-        Начать новый опрос
-      </button>
-    </div>
+        {/* Disclaimer — verbatim canonical string, visible (not buried fine print) */}
+        <Disclaimer variant="prominent" />
+
+        {/* CTAs */}
+        <div className="result-ctas">
+          <a
+            href={getPdfUrl(sessionId)}
+            className="btn-pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M10 3v10M6 9l4 4 4-4M4 15h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Скачать маршрутный лист (PDF)
+          </a>
+          <button type="button" className="btn-restart" onClick={onRestart}>
+            Начать новый опрос
+          </button>
+        </div>
+
+        {/* Feedback */}
+        {!feedbackSent ? (
+          <section className="feedback-card" aria-label="Обратная связь">
+            <h3 className="feedback-title">Оцените полезность маршрута</h3>
+            <div className="rating-row" role="radiogroup" aria-label="Оценка от 1 до 5">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={`rating-btn ${feedbackRating === n ? 'active' : ''}`}
+                  onClick={() => setFeedbackRating(n)}
+                  aria-pressed={feedbackRating === n}
+                  aria-label={`Оценка ${n}`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div className="feedback-q">Подходит ли предложенный маршрут?</div>
+            <div className="helpful-row" role="radiogroup" aria-label="Подходит ли маршрут">
+              {([
+                [true, 'Да'],
+                [null, 'Частично'],
+                [false, 'Нет'],
+              ] as const).map(([val, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={`helpful-btn ${feedbackHelpful === val ? 'active' : ''}`}
+                  onClick={() => setFeedbackHelpful(val)}
+                  aria-pressed={feedbackHelpful === val}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {feedbackRating !== null && (
+              <button
+                type="button"
+                className="cta-primary feedback-submit"
+                onClick={handleFeedbackSubmit}
+              >
+                Отправить
+              </button>
+            )}
+          </section>
+        ) : (
+          <section className="feedback-card" aria-live="polite">
+            <p className="feedback-thanks">Спасибо за обратную связь!</p>
+          </section>
+        )}
+      </main>
+    </>
   )
 }
