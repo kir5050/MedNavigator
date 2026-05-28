@@ -627,13 +627,15 @@ nav.editorial .logo { color: var(--ink-text); }
   color: var(--text-secondary);
 }
 .route-doc-seal {
-  width: 38px; height: 38px;
+  padding: 8px 14px;
   border: 1px solid var(--border-strong);
-  border-radius: 50%;
+  border-radius: 999px;
   display: grid; place-items: center;
   font-family: var(--font-mono);
   font-size: 9px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
   color: var(--text-secondary);
   position: relative;
   flex-shrink: 0;
@@ -642,7 +644,7 @@ nav.editorial .logo { color: var(--ink-text); }
   content: '';
   position: absolute; inset: 3px;
   border: 1px dashed var(--border);
-  border-radius: 50%;
+  border-radius: 999px;
 }
 
 /* ============================================================
@@ -1237,32 +1239,385 @@ footer .logo-tag {
 }
 
 /* ============================================================
-   FADE-UP REVEAL — IntersectionObserver
+   PREMIUM MOTION SYSTEM
    ============================================================ */
+
+/* Section reveal — base */
 .fade-up {
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity .7s var(--ease), transform .7s var(--ease);
+  transform: translateY(24px);
+  transition: opacity 1s var(--ease), transform 1s var(--ease);
 }
 .fade-up.visible { opacity: 1; transform: translateY(0); }
 
+/* Stagger reveal for grids */
+.fade-up .steps-grid > *,
+.fade-up .why-grid > *,
+.fade-up .reviews-grid > *,
+.fade-up .feature-list li,
+.fade-up .b2b-benefit,
+.fade-up .pdf-line {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity .85s var(--ease), transform .85s var(--ease);
+}
 .fade-up.visible .steps-grid > *,
 .fade-up.visible .why-grid > *,
-.fade-up.visible .reviews-grid > * {
-  animation: cardIn .7s var(--ease) both;
+.fade-up.visible .reviews-grid > *,
+.fade-up.visible .feature-list li,
+.fade-up.visible .b2b-benefit,
+.fade-up.visible .pdf-line {
+  opacity: 1;
+  transform: none;
 }
-.fade-up.visible .steps-grid > *:nth-child(2),
-.fade-up.visible .why-grid > *:nth-child(2),
-.fade-up.visible .reviews-grid > *:nth-child(2) { animation-delay: 80ms; }
-.fade-up.visible .steps-grid > *:nth-child(3),
-.fade-up.visible .why-grid > *:nth-child(3),
-.fade-up.visible .reviews-grid > *:nth-child(3) { animation-delay: 160ms; }
-.fade-up.visible .why-grid > *:nth-child(4) { animation-delay: 240ms; }
-.fade-up.visible .why-grid > *:nth-child(5) { animation-delay: 320ms; }
-.fade-up.visible .why-grid > *:nth-child(6) { animation-delay: 400ms; }
-@keyframes cardIn {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+.fade-up.visible .steps-grid > *:nth-child(1) { transition-delay: .08s; }
+.fade-up.visible .steps-grid > *:nth-child(2) { transition-delay: .18s; }
+.fade-up.visible .steps-grid > *:nth-child(3) { transition-delay: .28s; }
+.fade-up.visible .reviews-grid > *:nth-child(1) { transition-delay: .08s; }
+.fade-up.visible .reviews-grid > *:nth-child(2) { transition-delay: .18s; }
+.fade-up.visible .reviews-grid > *:nth-child(3) { transition-delay: .28s; }
+.fade-up.visible .why-grid > *:nth-child(1) { transition-delay: .08s; }
+.fade-up.visible .why-grid > *:nth-child(2) { transition-delay: .15s; }
+.fade-up.visible .why-grid > *:nth-child(3) { transition-delay: .22s; }
+.fade-up.visible .why-grid > *:nth-child(4) { transition-delay: .29s; }
+.fade-up.visible .why-grid > *:nth-child(5) { transition-delay: .36s; }
+.fade-up.visible .why-grid > *:nth-child(6) { transition-delay: .43s; }
+.fade-up.visible .feature-list li:nth-child(1) { transition-delay: .08s; }
+.fade-up.visible .feature-list li:nth-child(2) { transition-delay: .15s; }
+.fade-up.visible .feature-list li:nth-child(3) { transition-delay: .22s; }
+.fade-up.visible .feature-list li:nth-child(4) { transition-delay: .29s; }
+.fade-up.visible .feature-list li:nth-child(5) { transition-delay: .36s; }
+.fade-up.visible .pdf-line:nth-child(2) { transition-delay: .12s; }
+.fade-up.visible .pdf-line:nth-child(3) { transition-delay: .22s; }
+.fade-up.visible .pdf-line:nth-child(4) { transition-delay: .32s; }
+.fade-up.visible .pdf-line:nth-child(5) { transition-delay: .42s; }
+.fade-up.visible .b2b-benefit:nth-child(1) { transition-delay: .14s; }
+.fade-up.visible .b2b-benefit:nth-child(2) { transition-delay: .24s; }
+.fade-up.visible .b2b-benefit:nth-child(3) { transition-delay: .34s; }
+
+/* Split heading — word-by-word mask reveal (Dropbox-esque editorial pattern) */
+.split-line {
+  display: inline-block;
+  overflow: hidden;
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
+  vertical-align: top;
+}
+.split-word {
+  display: inline-block;
+  transform: translateY(115%);
+  opacity: 0;
+  transition: transform 1.05s var(--ease), opacity 1.05s var(--ease);
+  will-change: transform;
+}
+.hero-anim.ready .split-word { transform: translateY(0); opacity: 1; }
+
+/* Hero — choreographed entrance */
+.hero-anim .hero-section-num,
+.hero-anim .hero-eyebrow,
+.hero-anim .hero-rule,
+.hero-anim .hero-sub,
+.hero-anim .hero-actions,
+.hero-anim .hero-trust,
+.hero-anim .hero-side-item,
+.hero-anim .hero-aside {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 1s var(--ease), transform 1s var(--ease);
+}
+.hero-anim.ready .hero-section-num { opacity: 1; transform: none; transition-delay: .1s; }
+.hero-anim.ready .hero-eyebrow { opacity: 1; transform: none; transition-delay: .2s; }
+.hero-anim.ready .hero-rule { opacity: 1; transform: none; transition-delay: .65s; }
+.hero-anim.ready .hero-sub { opacity: 1; transform: none; transition-delay: .72s; }
+.hero-anim.ready .hero-actions { opacity: 1; transform: none; transition-delay: .82s; }
+.hero-anim.ready .hero-trust { opacity: 1; transform: none; transition-delay: .92s; }
+.hero-anim.ready .hero-side-item:nth-child(1) { opacity: 1; transform: none; transition-delay: .35s; }
+.hero-anim.ready .hero-side-item:nth-child(2) { opacity: 1; transform: none; transition-delay: .45s; }
+.hero-anim.ready .hero-side-item:nth-child(3) { opacity: 1; transform: none; transition-delay: .55s; }
+
+/* Hero rule — draw from left */
+.hero-anim .hero-rule {
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 1.3s var(--ease), opacity 1s var(--ease);
+}
+.hero-anim.ready .hero-rule { transform: scaleX(1); }
+
+/* Route doc — enters, then lines stagger */
+.hero-anim .hero-aside { transform: translateY(20px) scale(0.985); transition: opacity 1.1s var(--ease), transform 1.1s var(--ease); }
+.hero-anim.ready .hero-aside { opacity: 1; transform: none; transition-delay: .4s; }
+.hero-anim .route-doc .route-row {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity .7s var(--ease), transform .7s var(--ease);
+}
+.hero-anim.ready .route-doc .route-row:nth-of-type(1) { opacity: 1; transform: none; transition-delay: .95s; }
+.hero-anim.ready .route-doc .route-row:nth-of-type(2) { opacity: 1; transform: none; transition-delay: 1.05s; }
+.hero-anim.ready .route-doc .route-row:nth-of-type(3) { opacity: 1; transform: none; transition-delay: 1.15s; }
+.hero-anim.ready .route-doc .route-row:nth-of-type(4) { opacity: 1; transform: none; transition-delay: 1.25s; }
+.hero-anim .route-doc-foot {
+  opacity: 0;
+  transition: opacity .7s var(--ease);
+}
+.hero-anim.ready .route-doc-foot { opacity: 1; transition-delay: 1.4s; }
+
+/* Route pill dot — gentle pulse */
+.route-pill::before {
+  animation: routeDot 2.6s ease-in-out infinite;
+}
+@keyframes routeDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.55; }
+}
+
+/* Route doc — subtle float on idle */
+.route-doc {
+  animation: docFloat 9s ease-in-out infinite;
+}
+@keyframes docFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* Section title — accent gets a copper highlight that draws in */
+.section-title .accent,
+.b2b-card h2 .accent,
+.final-cta .section-title .accent,
+.hero h1 .accent {
+  position: relative;
+  display: inline-block;
+}
+.section-title .accent::after,
+.b2b-card h2 .accent::after,
+.final-cta .section-title .accent::after {
+  content: '';
+  position: absolute;
+  left: -0.05em; right: -0.05em;
+  bottom: 0.08em;
+  height: 0.08em;
+  background: var(--copper);
+  opacity: 0.22;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 1.1s var(--ease) .3s;
+  pointer-events: none;
+}
+.fade-up.visible .section-title .accent::after,
+.fade-up.visible .b2b-card h2 .accent::after,
+.fade-up.visible .final-cta .section-title .accent::after { transform: scaleX(1); }
+
+/* Hero accent — draw on load */
+.hero-anim .hero h1 .accent::after {
+  content: '';
+  position: absolute;
+  left: -0.05em; right: -0.05em;
+  bottom: 0.08em;
+  height: 0.08em;
+  background: var(--copper);
+  opacity: 0.22;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 1.1s var(--ease);
+  pointer-events: none;
+}
+.hero-anim.ready .hero h1 .accent::after { transform: scaleX(1); transition-delay: .9s; }
+
+/* Nav — scrolled state with backdrop */
+nav.editorial {
+  transition: background .4s var(--ease), border-color .4s var(--ease), box-shadow .4s var(--ease);
+  border-bottom: 1px solid rgba(250,247,238,0);
+}
+nav.editorial.scrolled {
+  background: rgba(26,23,20,0.82);
+  backdrop-filter: saturate(140%) blur(12px);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
+  border-bottom-color: rgba(250,247,238,0.07);
+}
+
+/* Nav links — underline draw on hover */
+.nav-links a:not(.nav-cta) {
+  position: relative;
+}
+.nav-links a:not(.nav-cta)::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -5px;
+  height: 1px;
+  background: var(--copper);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform .45s var(--ease);
+}
+.nav-links a:not(.nav-cta):hover::after { transform: scaleX(1); }
+
+/* Buttons — premium hover system */
+.btn-primary, .btn-secondary, .btn-white, .nav-cta {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.btn-primary .arrow, .nav-cta::after, .btn-white .arrow {
+  transition: transform .45s var(--ease);
+}
+.btn-primary:hover .arrow,
+.btn-white:hover .arrow { transform: translateX(5px); }
+.nav-cta:hover::after { transform: translateX(3px); }
+
+/* Copper sweep on primary btn */
+.btn-primary::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--copper);
+  transform: translateY(101%);
+  transition: transform .55s var(--ease);
+  z-index: -1;
+}
+.btn-primary:hover::before { transform: translateY(0); }
+.btn-primary:hover { background: var(--ink); border-color: var(--copper); }
+
+/* Card refined hover */
+.step-card, .why-card, .review-card {
+  transition: transform .45s var(--ease), border-color .35s var(--ease), box-shadow .45s var(--ease), color .35s var(--ease);
+  will-change: transform;
+}
+.step-card:hover, .why-card:hover, .review-card:hover {
+  transform: translateY(-4px);
+}
+.step-card .step-num::after,
+.review-card .review-num::after {
+  transition: width .5s var(--ease), opacity .5s var(--ease);
+}
+.step-card:hover .step-num::after,
+.review-card:hover .review-num::after { width: 52px; opacity: 0.9; }
+
+/* Icons — soft hover motion */
+.why-icon, .b2b-benefit-icon { transition: transform .5s var(--ease), color .35s var(--ease); }
+.why-card:hover .why-icon { transform: translateY(-3px) rotate(-3deg); }
+.b2b-benefit:hover .b2b-benefit-icon { transform: translateX(3px); }
+
+/* Hero glow — slow drift */
+.hero::after {
+  animation: glowDrift 24s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+@keyframes glowDrift {
+  0%   { transform: translate(0,    0)   scale(1);    opacity: 1; }
+  50%  { transform: translate(-18px, 22px) scale(1.06); opacity: 0.9; }
+  100% { transform: translate(-32px, 42px) scale(1.12); opacity: 0.78; }
+}
+
+/* B2B & Final CTA — animated grid + ambient copper glow */
+.b2b-card::before,
+.final-cta-card::before {
+  animation: gridDrift 32s linear infinite;
+}
+@keyframes gridDrift {
+  from { background-position: -1px -1px, -1px -1px; }
+  to   { background-position: 79px 79px, 79px 79px; }
+}
+.b2b-card,
+.final-cta-card { position: relative; }
+.b2b-card .glow,
+.final-cta-card .glow {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 60% at 78% 18%, rgba(176,89,58,0.22) 0%, transparent 65%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.2s var(--ease);
+  z-index: 0;
+}
+.fade-up.visible .b2b-card .glow,
+.fade-up.visible .final-cta-card .glow { opacity: 1; }
+
+/* Section number underline pulse on reveal */
+.fade-up .section-num::after {
+  width: 0;
+  transition: width .9s var(--ease) .15s, opacity .9s var(--ease);
+}
+.fade-up.visible .section-num::after { width: 56px; }
+
+/* Hero section num underline — animate on load */
+.hero-anim .hero-section-num::after {
+  width: 0;
+  transition: width 1s var(--ease) .35s;
+}
+.hero-anim.ready .hero-section-num::after { width: 56px; }
+
+/* Emergency card — soft inner pulse */
+.emergency-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(176,89,58,0.20) 0%, transparent 60%);
+  pointer-events: none;
+  animation: emergencyPulse 4.5s ease-in-out infinite;
+  border-radius: inherit;
+  z-index: 0;
+}
+.emergency-card { position: relative; overflow: hidden; }
+.emergency-card > * { position: relative; z-index: 1; }
+@keyframes emergencyPulse {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.75; }
+}
+
+/* Emergency numbers — typewriter-ish dot ticker */
+.emergency-numbers::after {
+  content: '';
+  display: inline-block;
+  width: 0.18em; height: 0.7em;
+  background: var(--copper);
+  margin-left: 0.18em;
+  vertical-align: -0.05em;
+  animation: caret 1.1s steps(2, end) infinite;
+}
+@keyframes caret { 50% { opacity: 0; } }
+
+/* FAQ — soft hover bg */
+.faq-item { transition: border-color .35s var(--ease), box-shadow .35s var(--ease), background .35s var(--ease); }
+.faq-item:hover { background: rgba(250,247,238,0.5); }
+
+/* Logo subtle */
+.logo { transition: opacity .3s var(--ease); }
+.logo:hover { opacity: 0.82; }
+
+/* Smooth anchor offset for fixed nav + meta strip */
+section[id] { scroll-margin-top: 110px; }
+
+/* PDF preview — subtle hover lift */
+.pdf-preview {
+  transition: transform .5s var(--ease), box-shadow .5s var(--ease);
+}
+.pdf-preview:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 1px 0 rgba(26,23,20,0.05), 0 28px 56px -22px rgba(26,23,20,0.22);
+}
+
+/* Footer link arrow hover */
+.footer-col a {
+  position: relative;
+  padding-left: 0;
+  transition: color .25s var(--ease), padding-left .35s var(--ease);
+}
+.footer-col a:hover { padding-left: 10px; }
+.footer-col a::before {
+  content: '→';
+  position: absolute;
+  left: -4px;
+  opacity: 0;
+  transition: opacity .3s var(--ease), transform .35s var(--ease);
+  color: var(--copper);
+}
+.footer-col a:hover::before { opacity: 1; transform: translateX(2px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .split-word { transform: none !important; opacity: 1 !important; }
+  .hero-anim .hero-rule { transform: scaleX(1) !important; }
+  .hero-anim .hero-aside, .hero-anim .route-doc .route-row, .hero-anim .route-doc-foot { opacity: 1 !important; transform: none !important; }
+  .hero-anim .hero-section-num, .hero-anim .hero-eyebrow, .hero-anim .hero-sub, .hero-anim .hero-actions, .hero-anim .hero-trust, .hero-anim .hero-side-item { opacity: 1 !important; transform: none !important; }
+  .hero::after, .route-doc, .b2b-card::before, .final-cta-card::before, .route-pill::before, .emergency-card::before, .emergency-numbers::after { animation: none !important; }
 }
 
 /* ============================================================
@@ -1283,6 +1638,11 @@ footer .logo-tag {
     grid-template-columns: 1fr;
     gap: 32px;
   }
+  /* Source order is meta → headline → route card; on a single column
+     the headline and the product proof must come first */
+  .hero-main  { order: 1; }
+  .hero-aside { order: 2; }
+  .hero-side  { order: 3; }
   .hero-side {
     flex-direction: row;
     flex-wrap: wrap;
@@ -1300,6 +1660,9 @@ footer .logo-tag {
 
 @media (max-width: 768px) {
   .pdf-grid, .b2b-card { grid-template-columns: 1fr; }
+  /* gridDrift animates background-position (paints on main thread) —
+     hold it static on mobile to spare low-power devices */
+  .b2b-card::before, .final-cta-card::before { animation: none; }
   .steps-grid, .reviews-grid, .why-grid { grid-template-columns: 1fr; }
   .burger { display: block; }
   .nav-links {
@@ -1413,32 +1776,30 @@ footer .logo-tag {
 <!-- META STRIP — under fixed nav -->
 <aside class="meta-strip" aria-label="Статус продукта">
   <div class="meta-strip-inner">
-    <span><span class="dot" aria-hidden="true"></span>Pilot · <b>OPEN</b></span>
-    <span>Doc · <b>protocol&nbsp;/&nbsp;01</b></span>
-    <span class="ms-optional">RU · <b>v 1.0</b></span>
+    <span><span class="dot" aria-hidden="true"></span>Пилот · <b>ОТКРЫТ</b></span>
   </div>
 </aside>
 
 <!-- HERO -->
-<section class="hero" id="hero" data-screen-label="00 Hero">
+<section class="hero hero-anim" id="hero">
   <div class="hero-inner">
     <aside class="hero-side" aria-hidden="true">
       <div class="hero-side-item">
-        <dl><dt>§ 01</dt><dd>Product<b>Цифровая маршрутизация</b></dd></dl>
+        <dl><dt>§ 01</dt><dd>Продукт<b>Цифровая маршрутизация</b></dd></dl>
       </div>
       <div class="hero-side-item">
-        <dl><dt>§ 02</dt><dd>Audience<b>B2B partners</b></dd></dl>
+        <dl><dt>§ 02</dt><dd>Аудитория<b>Страховые и клиники</b></dd></dl>
       </div>
       <div class="hero-side-item">
-        <dl><dt>§ 03</dt><dd>Frame<b>Информационный сервис</b></dd></dl>
+        <dl><dt>§ 03</dt><dd>Формат<b>Информационный сервис</b></dd></dl>
       </div>
     </aside>
 
     <div class="hero-main">
-      <div class="hero-section-num">Protocol&nbsp;/&nbsp;01 — Hero</div>
+      <div class="hero-section-num">Протокол&nbsp;/&nbsp;01</div>
       <div class="hero-eyebrow">
         <span class="pulse" aria-hidden="true"></span>
-        <b>Pilot</b>
+        <b>Пилот</b>
         <span class="sep" aria-hidden="true"></span>
         Открыт для страховых, ДМС и клиник
       </div>
@@ -1475,7 +1836,7 @@ footer .logo-tag {
         <span class="route-doc-corner" aria-hidden="true"></span>
         <header class="route-doc-head">
           <div>
-            <div class="route-doc-title">Route sheet</div>
+            <div class="route-doc-title">Образец</div>
             <div class="route-doc-name">Маршрутный лист</div>
           </div>
           <div class="route-doc-id">Сессия · <b>A7F3</b></div>
@@ -1500,7 +1861,7 @@ footer .logo-tag {
 
         <footer class="route-doc-foot">
           <span class="route-doc-foot-text">Не диагноз · Не назначение лечения</span>
-          <span class="route-doc-seal" aria-hidden="true">SAFE</span>
+          <span class="route-doc-seal" aria-hidden="true">БЕЗОПАСНО</span>
         </footer>
       </article>
     </aside>
@@ -1533,10 +1894,63 @@ footer .logo-tag {
   </div>
 </section>
 
+<!-- ENGINE / NOT JUST AN LLM -->
+<section class="why-section fade-up" id="engine">
+  <div class="container">
+    <div class="section-num">§ 03 — Архитектура</div>
+    <h2 class="section-title">Технология, которая держит <span class="accent">безопасную рамку</span></h2>
+    <p class="section-desc">MedNavigator не отдаёт пациента напрямую языковой модели. Сервис сначала проверяет риски, затем структурирует жалобу и только после этого формирует маршрутный лист по заданным правилам — без диагнозов, назначений и свободных медицинских советов.</p>
+    <div class="why-grid">
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="24" height="24" fill="none" stroke-width="1.5" aria-hidden="true"><path d="M12 2L2 22h20L12 2z"/><path d="M12 10v4M12 18h.01"/></svg>
+        </div>
+        <h3>Сначала безопасность</h3>
+        <p>Экстренные симптомы и опасные формулировки проверяются до формирования ответа. Если есть признаки риска, сервис направляет пациента к срочной помощи, а не продолжает обычный сценарий.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="24" height="24" fill="none" stroke-width="1.5" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.5 6H13a2 2 0 0 1 2 2v1.5M8.5 18H13a2 2 0 0 0 2-2v-1.5"/></svg>
+        </div>
+        <h3>Маршрут по правилам</h3>
+        <p>Специалист, срочность и следующий шаг определяются не свободной догадкой модели, а настроенной логикой маршрутизации и ограничениями, согласованными с безопасной информационной рамкой продукта.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="24" height="24" fill="none" stroke-width="1.5" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <h3>ИИ помогает понять текст</h3>
+        <p>Языковая модель используется как инструмент для разбора свободного описания: выделить жалобы, сроки, сопутствующие факторы и оформить их понятным языком.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="24" height="24" fill="none" stroke-width="1.5" aria-hidden="true"><path d="M3 4h18l-7 8v7l-4-2v-5z"/></svg>
+        </div>
+        <h3>Контроль формулировок</h3>
+        <p>На выходе остаются только нейтральные формулировки: что описал пациент, насколько срочно обратиться, к кому записаться и как подготовиться к визиту.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="24" height="24" fill="none" stroke-width="1.5" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg>
+        </div>
+        <h3>Один понятный результат</h3>
+        <p>Вместо длинной переписки пациент получает маршрутный лист — короткий документ, который удобно передать в медпульт, страховую или показать врачу на очном приёме.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="24" height="24" fill="none" stroke-width="1.5" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+        </div>
+        <h3>Готово к адаптации под партнёра</h3>
+        <p>Сценарии, брендирование, формат интеграции и модельный слой можно настроить под требования страховой, ДМС-команды или клиники без изменения безопасной логики продукта — это продукт с готовым слоем безопасности, а не просто доступ к чужому ИИ.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- WHY US -->
 <section class="why-section fade-up" id="why">
   <div class="container">
-    <div class="section-num">§ 03 — Партнёру</div>
+    <div class="section-num">§ 04 — Партнёру</div>
     <h2 class="section-title">Почему <span class="accent">MedNavigator</span></h2>
     <p class="section-desc">Структурированный первый шаг между жалобой пациента и записью на приём</p>
     <div class="why-grid">
@@ -1599,7 +2013,7 @@ footer .logo-tag {
       <div class="pdf-preview-foot">Не диагноз · Не назначение лечения</div>
     </div>
     <div class="pdf-content">
-      <div class="section-num">§ 04 — Артефакт</div>
+      <div class="section-num">§ 05 — Артефакт</div>
       <h2 class="section-title">Маршрутный лист</h2>
       <p class="section-desc">Документ для пациента, который он при желании показывает врачу. Не диагноз, не назначение лечения — структурированный первый шаг к очной консультации.</p>
       <ul class="feature-list">
@@ -1635,7 +2049,7 @@ footer .logo-tag {
 <!-- USE CASES -->
 <section class="reviews-section fade-up" id="usecases">
   <div class="container">
-    <div class="section-num">§ 05 — Сценарии</div>
+    <div class="section-num">§ 06 — Сценарии</div>
     <h2 class="section-title">Когда нужен MedNavigator</h2>
     <p class="section-desc">Типовые ситуации со стороны страховой, медпульта или клиники</p>
     <div class="reviews-grid">
@@ -1662,8 +2076,9 @@ footer .logo-tag {
 <section class="b2b-section fade-up" id="b2b">
   <div class="container">
     <div class="b2b-card">
+      <span class="glow" aria-hidden="true"></span>
       <div>
-        <div class="section-num section-num-light">§ 06 — Партнёры</div>
+        <div class="section-num section-num-light">§ 07 — Партнёры</div>
         <h2>Для страховых, <span class="accent">ДМС</span> и клиник</h2>
         <p>MedNavigator — цифровой первый шаг между жалобой и записью. Структурирует запрос пациента, повышает точность первичного направления, разгружает колл-центр. Начать можно с простого пилотного сценария — без сложной интеграции на первом этапе.</p>
         <a href="mailto:hello@navimedic.ru?subject=Обсудить%20пилот%20MedNavigator" class="btn-white">
@@ -1696,7 +2111,7 @@ footer .logo-tag {
           </div>
           <div>
             <h4>Гибкие варианты пилотной интеграции</h4>
-            <p>Ссылка, co-branded сценарий, white-label или API — формат обсудим под ваш кейс</p>
+            <p>Ссылка, совместный бренд, под брендом партнёра или API — формат обсудим под ваш кейс</p>
           </div>
         </div>
       </div>
@@ -1707,7 +2122,7 @@ footer .logo-tag {
 <!-- SAFETY -->
 <section class="safety-section fade-up" id="safety">
   <div class="container">
-    <div class="section-num">§ 07 — Безопасность</div>
+    <div class="section-num">§ 08 — Безопасность</div>
     <h2 class="section-title">Безопасность и регуляторика</h2>
     <p class="section-desc">MedNavigator работает в безопасной информационной рамке</p>
     <div class="why-grid">
@@ -1761,7 +2176,7 @@ footer .logo-tag {
 <!-- FAQ -->
 <section class="faq-section fade-up" id="faq">
   <div class="container">
-    <div class="section-num">§ 08 — Вопросы</div>
+    <div class="section-num">§ 09 — Вопросы</div>
     <h2 class="section-title">Частые вопросы</h2>
     <p class="section-desc">Ответы на то, что спрашивают чаще всего</p>
     <div class="faq-list">
@@ -1775,7 +2190,7 @@ footer .logo-tag {
       </div>
       <div class="faq-item">
         <button class="faq-q" aria-expanded="false">Можно ли использовать в ДМС? <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
-        <div class="faq-a"><div class="faq-a-inner"><p>Да, основной сценарий применения — цифровой первый шаг между обращением застрахованного и записью на приём. Конкретный формат интеграции (ссылка, co-branded, white-label, API) обсуждается под кейс партнёра.</p></div></div>
+        <div class="faq-a"><div class="faq-a-inner"><p>Да, основной сценарий применения — цифровой первый шаг между обращением застрахованного и записью на приём. Конкретный формат интеграции (ссылка, совместный бренд, под брендом партнёра, API) обсуждается под кейс партнёра.</p></div></div>
       </div>
       <div class="faq-item">
         <button class="faq-q" aria-expanded="false">Как запустить пилот? <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
@@ -1801,7 +2216,8 @@ footer .logo-tag {
 <section class="final-cta fade-up" id="pilot">
   <div class="container">
     <div class="final-cta-card">
-      <div class="section-num section-num-light">§ 09 — Пилот</div>
+      <span class="glow" aria-hidden="true"></span>
+      <div class="section-num section-num-light">§ 10 — Пилот</div>
       <h2 class="section-title">Обсудим пилот <span class="accent">MedNavigator</span> для вашей страховой или клиники</h2>
       <p class="section-desc">Покажем пользовательский сценарий, маршрутный лист и варианты запуска без сложной интеграции на первом этапе.</p>
       <div class="final-cta-actions">
@@ -1831,7 +2247,7 @@ footer .logo-tag {
           <h4>Продукт</h4>
           <a href="#how">Как работает</a>
           <a href="#safety">Безопасность</a>
-          <a href="#faq">FAQ</a>
+          <a href="#faq">Вопросы</a>
           <a href="https://app.navimedic.ru">Сценарий пациента</a>
         </div>
         <div class="footer-col">
@@ -1850,12 +2266,17 @@ footer .logo-tag {
 </footer>
 
 <script>
-// Nav scroll
-window.addEventListener('scroll', () => {
-  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 20);
-});
+// ============================================================
+// NAV scroll state (backdrop + border)
+// ============================================================
+const navEl = document.getElementById('nav');
+const onScroll = () => navEl.classList.toggle('scrolled', window.scrollY > 16);
+onScroll();
+window.addEventListener('scroll', onScroll, { passive: true });
 
-// Burger menu
+// ============================================================
+// BURGER
+// ============================================================
 document.getElementById('burger').addEventListener('click', function() {
   const open = this.classList.toggle('open');
   document.getElementById('navLinks').classList.toggle('open');
@@ -1869,7 +2290,9 @@ document.querySelectorAll('#navLinks a').forEach(a => {
   });
 });
 
-// FAQ
+// ============================================================
+// FAQ accordion
+// ============================================================
 document.querySelectorAll('.faq-q').forEach(btn => {
   btn.addEventListener('click', () => {
     const item = btn.parentElement;
@@ -1886,11 +2309,104 @@ document.querySelectorAll('.faq-q').forEach(btn => {
   });
 });
 
-// Fade in
-const obs = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
-}, { threshold: 0.15 });
-document.querySelectorAll('.fade-up').forEach(el => obs.observe(el));
+// ============================================================
+// SECTION REVEAL — IntersectionObserver
+// ============================================================
+const sectionObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      sectionObserver.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+document.querySelectorAll('.fade-up').forEach(el => sectionObserver.observe(el));
+
+// ============================================================
+// HERO — split heading into words, then choreograph entrance
+// ============================================================
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function splitHeading(h1) {
+  const nodes = Array.from(h1.childNodes);
+  h1.innerHTML = '';
+  const created = [];
+  nodes.forEach(node => {
+    if (node.nodeType === 3) {
+      // Text node — split on whitespace; preserve nbsp inside words
+      const parts = node.textContent.split(/(\s+)/);
+      parts.forEach(part => {
+        if (!part) return;
+        if (/^\s+$/.test(part)) {
+          h1.appendChild(document.createTextNode(' '));
+          return;
+        }
+        const line = document.createElement('span');
+        line.className = 'split-line';
+        const word = document.createElement('span');
+        word.className = 'split-word';
+        word.textContent = part;
+        line.appendChild(word);
+        h1.appendChild(line);
+        created.push(word);
+      });
+    } else if (node.nodeType === 1) {
+      // Element (e.g. .accent) — treat whole element as a single "word"
+      const line = document.createElement('span');
+      line.className = 'split-line';
+      const word = document.createElement('span');
+      word.className = 'split-word';
+      // Bring original element classes onto the word so styling is preserved
+      node.classList.forEach(c => word.classList.add(c));
+      while (node.firstChild) word.appendChild(node.firstChild);
+      line.appendChild(word);
+      h1.appendChild(line);
+      created.push(word);
+    }
+  });
+  // Stagger
+  created.forEach((w, i) => {
+    w.style.transitionDelay = (0.18 + i * 0.07) + 's';
+  });
+}
+
+const heroEl = document.querySelector('.hero-anim');
+const heroH1 = heroEl ? heroEl.querySelector('h1') : null;
+if (heroH1 && !reducedMotion) splitHeading(heroH1);
+
+// Trigger entrance on next frame so initial state is painted first
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    if (heroEl) heroEl.classList.add('ready');
+  });
+});
+
+// ============================================================
+// MAGNETIC buttons — subtle pull toward cursor on desktop
+// ============================================================
+if (!reducedMotion && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+  document.querySelectorAll('.btn-primary, .btn-white, .nav-cta').forEach(btn => {
+    let raf = null;
+    btn.style.transition = (btn.style.transition || '') + ', transform .45s cubic-bezier(0.16,1,0.3,1)';
+    btn.addEventListener('mousemove', (e) => {
+      const rect = btn.getBoundingClientRect();
+      const x = e.clientX - rect.left - rect.width / 2;
+      const y = e.clientY - rect.top - rect.height / 2;
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        btn.style.transform = `translate(${x * 0.18}px, ${y * 0.22}px)`;
+      });
+    });
+    btn.addEventListener('mouseleave', () => {
+      if (raf) cancelAnimationFrame(raf);
+      btn.style.transform = '';
+    });
+  });
+}
+
+// ============================================================
+// HERO glow — handled by CSS glowDrift animation
+// ============================================================
 </script>
 
 </body>
