@@ -1,3 +1,33 @@
+/**
+ * ResultScreen — HTML-вариант маршрутного листа.
+ *
+ * PDF reconcile (см. backend/app/pdf/view_model.py) — НЕ создаём
+ * второй противоречащий формат, но известные расхождения:
+ *
+ *  - "Жалобы" здесь = `triage.symptoms_summary` (LLM-summary),
+ *    в PDF = `what_patient_described` (KB-normalised symptom list).
+ *  - "Специалист.reason" здесь рендерится из ответа /triage напрямую;
+ *    в PDF этот LLM-текст СОЗНАТЕЛЬНО заменяется на статический
+ *    `PRIMARY_ROUTE_ONE_LINER` для безопасности.
+ *  - "Подготовка" здесь = `spec.preparation` (per-specialist, из KB);
+ *    в PDF используется единый статический `PREPARATION_CHECKLIST` (4 пункта).
+ *  - В PDF есть отдельные блоки `QUESTIONS_FOR_DOCTOR` и `URGENT_CARE_BLOCK`,
+ *    в этом экране их нет.
+ *  - Дисклеймер: здесь — каноническая строка из CLAUDE.md §3 (через `Disclaimer`),
+ *    в PDF — собственная редакция (`view_model.DISCLAIMER`). Обе говорят одно и
+ *    то же, но текст отличается.
+ *
+ * TODO (после approval) — выровнять либо frontend под view_model, либо
+ * наоборот. В этом PR backend НЕ трогаем; расхождения зафиксированы здесь
+ * и в описании PR.
+ *
+ * Emergency-PDF branch: бэкенд имеет `is_crisis_only` ветку PDF (history +
+ * red_flags). В новом crisis-flow PDF CTA скрыт — это сознательно и не
+ * регрессия (старый ResultScreen тоже прятал PDF при `urgency === 'emergency'`).
+ * Crisis-PDF остаётся доступным напрямую по URL `/api/v1/session/{id}/pdf`,
+ * но из UI на него никто не выводит. Решение по этой ветке — отдельным PR.
+ */
+
 import { useState, useEffect } from 'react'
 import { getResult, getPdfUrl, submitFeedback } from '../api/client'
 import type { Specialist } from '../api/client'

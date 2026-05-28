@@ -140,8 +140,21 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
     try {
       const result = await runTriage(sessionId)
 
-      // Crisis intercept on triage path — emergency urgency locks into crisis screen,
-      // not into the regular result document.
+      // Crisis intercept on triage path — defense-in-depth.
+      //
+      // Today the LLM-driven triage prompt
+      // (backend/app/prompts/templates.py) is constrained to
+      // "low|medium|high", and the /triage response shape
+      // (backend/app/main.py — `run_triage`) returns only
+      // {urgency, specialists, symptoms_summary, disclaimer} with no
+      // `is_emergency` / `session_status` field. Red-flag emergencies are
+      // detected pre-LLM on the /message path and never reach /triage.
+      //
+      // The TS type still admits `urgency: 'emergency'` (api/client.ts
+      // TriageResult), so if a future backend change starts emitting that
+      // value on the triage path we MUST lock into crisis state instead of
+      // rendering an emergency as a regular route document. Cheaper to
+      // keep one guard here than to chase a regression later.
       if (result.urgency === 'emergency') {
         setCrisisText(result.symptoms_summary || 'Похоже, ситуация требует экстренной помощи.')
         return
