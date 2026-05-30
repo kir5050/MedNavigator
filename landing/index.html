@@ -885,6 +885,10 @@ nav.editorial .logo { color: var(--ink-text); }
 .reviews-section { padding: clamp(56px, 8vw, 104px) 0; }
 .reviews-section .section-desc { margin-bottom: clamp(32px, 5vw, 56px); }
 .reviews-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.b2b-tracks { margin-top: clamp(44px, 6vw, 76px); }
+.b2b-track + .b2b-track { margin-top: clamp(32px, 5vw, 56px); }
+.b2b-track-note { font-family: var(--font-sans); font-size: 13px; color: var(--text-muted); line-height: 1.55; letter-spacing: -0.003em; margin-top: 18px; max-width: 760px; }
+.pilot-metrics { margin-bottom: clamp(44px, 6vw, 72px); }
 .review-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -2116,6 +2120,60 @@ section[id] { scroll-margin-top: 110px; }
         </div>
       </div>
     </div>
+    <div class="b2b-tracks">
+      <div class="b2b-track">
+        <div class="section-num">Для страховой · ДМС</div>
+        <div class="reviews-grid">
+          <div class="review-card">
+            <div class="review-num">§ 01</div>
+            <h3>Снижение выплат по простым обращениям</h3>
+            <p>Точная маршрутизация с первого шага снижает долю лишних консультаций и повторных обращений, оплаченных страховой.</p>
+          </div>
+          <div class="review-card">
+            <div class="review-num">§ 02</div>
+            <h3>Оптимизация средней стоимости случая</h3>
+            <p>Часть потока переводится из очного приёма в телемедицину и медпульт — без снижения качества маршрута. Сервис загружает каналы, за которые страховая уже платит, а не добавляет новый.</p>
+          </div>
+          <div class="review-card">
+            <div class="review-num">§ 03</div>
+            <h3>Снижение стоимости обслуживания обращения</h3>
+            <p>Часть типовых запросов «куда идти и насколько срочно» закрывается без оператора, спорные случаи переводятся на человека — ниже штатная нагрузка на медпульт, в том числе в ночные смены.</p>
+          </div>
+          <div class="review-card">
+            <div class="review-num">§ 04</div>
+            <h3>Маршрутизация без регуляторной нагрузки</h3>
+            <p>Сервис не предполагает заболеваний и не назначает лечение, поэтому остаётся информационным сервисом, а не медицинским изделием. Это снимает со страховой часть регуляторной нагрузки и диагностической ответственности — в отличие от решений, которые ставят диагнозы.</p>
+          </div>
+          <div class="review-card">
+            <div class="review-num">§ 05</div>
+            <h3>Удержание корпоративного портфеля</h3>
+            <p>Понятный цифровой опыт повышает вероятность перезаключения ДМС-контракта и снижает отток застрахованных.</p>
+          </div>
+          <div class="review-card">
+            <div class="review-num">§ 06</div>
+            <h3>Видимое отличие в тендере</h3>
+            <p>Цифровой первый шаг — заметное отличие от работы только через классический медпульт при сопоставимых тарифах.</p>
+          </div>
+        </div>
+        <p class="b2b-track-note">Эффект по каждому пункту проверяется на ограниченном потоке по заранее согласованным метрикам — до масштабирования.</p>
+      </div>
+
+      <div class="b2b-track">
+        <div class="section-num">Для клиники</div>
+        <div class="reviews-grid">
+          <div class="review-card">
+            <div class="review-num">§ 01</div>
+            <h3>Точность первичной записи</h3>
+            <p>Пациенты реже записываются не к тому специалисту — меньше пустых слотов и переносов в расписании.</p>
+          </div>
+          <div class="review-card">
+            <div class="review-num">§ 02</div>
+            <h3>Подготовленный пациент</h3>
+            <p>На приём человек приходит со структурированной жалобой и подготовкой — приём проходит эффективнее.</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -2211,6 +2269,37 @@ section[id] { scroll-margin-top: 110px; }
 <!-- FINAL CTA -->
 <section class="final-cta fade-up" id="pilot">
   <div class="container">
+    <div class="pilot-metrics">
+      <div class="section-num">Что меряем на пилоте</div>
+      <div class="reviews-grid">
+        <div class="review-card">
+          <div class="review-num">§ 01</div>
+          <h3>Доля завершённых маршрутов</h3>
+          <p>Понятен ли сервис клиенту и доводит ли он до результата.</p>
+        </div>
+        <div class="review-card">
+          <div class="review-num">§ 02</div>
+          <h3>Доля дошедших до нужного шага</h3>
+          <p>Главный показатель пользы: не просто открыл сервис, а реально попал туда, куда нужно.</p>
+        </div>
+        <div class="review-card">
+          <div class="review-num">§ 03</div>
+          <h3>Нагрузка на медпульт по типовым кейсам</h3>
+          <p>Снимает ли сервис часть однотипных обращений.</p>
+        </div>
+        <div class="review-card">
+          <div class="review-num">§ 04</div>
+          <h3>Время от запроса до действия</h3>
+          <p>Стал ли путь клиента короче и понятнее.</p>
+        </div>
+        <div class="review-card">
+          <div class="review-num">§ 05</div>
+          <h3>Жалобы на неверную маршрутизацию</h3>
+          <p>Контроль качества, доверие и безопасное масштабирование.</p>
+        </div>
+      </div>
+      <p class="b2b-track-note">Первые две метрики заодно показывают, действительно ли застрахованные пользуются сервисом, — адаптация не предполагается, а измеряется.</p>
+    </div>
     <div class="final-cta-card">
       <span class="glow" aria-hidden="true"></span>
       <div class="section-num section-num-light">§ 10 — Пилот</div>
