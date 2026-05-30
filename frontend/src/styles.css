@@ -223,9 +223,15 @@ a:hover { color: var(--copper-2); text-decoration: underline; }
   display: grid;
   grid-template-columns: 28px 1fr;
   gap: 12px;
-  padding: 10px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--hair);
   align-items: baseline;
+}
+/* Wrapper <span> around title+description — stack them vertically so they
+   stop colliding on one inline line (e.g. "Опишите жалобусловами…"). */
+.step3 > span:nth-child(2) {
+  display: flex;
+  flex-direction: column;
 }
 .step3-n {
   font-family: var(--font-mono);
@@ -244,7 +250,7 @@ a:hover { color: var(--copper-2); text-decoration: underline; }
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-mute);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 /* ============ Primary CTA ============ */
