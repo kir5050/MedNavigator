@@ -13,21 +13,8 @@ class OpenRouterProvider(LLMProvider):
 
     async def generate(
         self, prompt: str, system: str, temperature: float = 0.3,
-        images: list[dict] | None = None,
     ) -> LLMResponse:
-        # Build user content — text or multimodal
-        if images:
-            user_content: list[dict] = []
-            for img in images:
-                user_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{img['media_type']};base64,{img['data']}",
-                    },
-                })
-            user_content.append({"type": "text", "text": prompt})
-        else:
-            user_content = prompt  # type: ignore
+        user_content = prompt
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(

@@ -2,10 +2,9 @@ import json
 import logging
 import traceback as tb_module
 
-import base64
 import httpx
 
-from fastapi import Depends, FastAPI, File, HTTPException, Header, Request, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
@@ -31,7 +30,6 @@ from app.models.database import (
 )
 from app.pdf import PDFGenerator
 from app.pdf.view_model import build_view_model
-from app.services.output_safety import FALLBACKS, safe_generate_text
 from app.services.triage_engine import TriageEngine
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
@@ -366,134 +364,6 @@ async def run_triage(request: Request, session_id: str):
     }
 
 
-@app.post("/api/v1/session/{session_id}/upload")
-@limiter.limit("5/minute")
-async def upload_file(request: Request, session_id: str, file: UploadFile = File(...)):
-    async with db_session_maker() as db:
-        session = await db.get(Session, session_id)
-        if not session:
-            raise HTTPException(404, "Session not found")
-        if session.status == "expired":
-            raise HTTPException(410, "Session expired")
-
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(413, "File too large (max 10MB)")
-
-    filename = file.filename or "file"
-    content_type = file.content_type or ""
-
-    analysis = ""
-
-    file_analysis_system = """Ты — помощник для извлечения контекста из загруженных медицинских документов. Не ставишь диагноз, не интерпретируешь документ как врач и не даёшь медицинских советов.
-
-Сформируй краткое нейтральное описание документа для контекста маршрутизации. Текст должен быть безопасен для пользовательского интерфейса и PDF.
-
-Извлекай только явно указанные факты:
-- тип документа: анализы, снимок, заключение, рецепт или другое;
-- какие показатели, жалобы, разделы или результаты упомянуты;
-- к какой общей области относится документ: анализы, обследование, врачебное заключение, назначения врача или другое.
-
-НЕ копируй и НЕ называй:
-- конкретные диагнозы;
-- коды МКБ;
-- названия лекарств, БАДов или добавок;
-- дозировки;
-- схемы лечения;
-- рекомендации из документа дословно.
-
-Если документ содержит такие сведения, опиши сам факт нейтрально:
-«документ содержит ранее поставленное врачом заключение»,
-«документ содержит назначения от врача»,
-«документ содержит данные анализов»,
-«документ содержит результаты обследования».
-
-Не делай выводов о причинах симптомов и не добавляй собственных рекомендаций.
-
-Ответь кратко, списком фактов.""".strip()
-
-    # Analyze images via LLM vision
-    if content_type.startswith("image/"):
-        b64 = base64.b64encode(content).decode()
-        images = [{"media_type": content_type, "data": b64}]
-        try:
-            llm = triage_engine.llm
-
-            async def _call_image(sys_arg, *, temperature, use_cache):
-                return await llm.generate(
-                    "Извлеки медицинские данные из этого изображения.",
-                    sys_arg, temperature=temperature, use_cache=use_cache,
-                    images=images,
-                )
-
-            analysis = await safe_generate_text(
-                _call_image, file_analysis_system,
-                channel="file_analysis", field_name="image",
-                fallback=FALLBACKS.file_analysis,
-            )
-        except Exception as e:
-            logger.warning("Image analysis failed: %s", e)
-
-    # Analyze PDFs — extract text and send to LLM
-    elif content_type == "application/pdf" or filename.lower().endswith(".pdf"):
-        try:
-            import fitz  # PyMuPDF
-            doc = fitz.open(stream=content, filetype="pdf")
-            pdf_text = ""
-            for page in doc:
-                pdf_text += page.get_text()
-            doc.close()
-
-            if pdf_text.strip():
-                llm = triage_engine.llm
-                pdf_prompt = f"Извлеки медицинские данные из этого документа:\n\n{pdf_text[:4000]}"
-
-                async def _call_pdf(sys_arg, *, temperature, use_cache):
-                    return await llm.generate(
-                        pdf_prompt, sys_arg,
-                        temperature=temperature, use_cache=use_cache,
-                    )
-
-                analysis = await safe_generate_text(
-                    _call_pdf, file_analysis_system,
-                    channel="file_analysis", field_name="pdf",
-                    fallback=FALLBACKS.file_analysis,
-                )
-            else:
-                analysis = "PDF без текста — возможно отсканированный документ."
-        except Exception as e:
-            logger.warning("PDF analysis failed: %s", e)
-
-    # Save to session state
-    async with db_session_maker() as db:
-        session = await db.get(Session, session_id)
-        state = json.loads(session.state_json)
-
-        # Add analysis to history
-        history_lines = state.get("history_lines", [])
-        history_lines.append(f"[Пациент загрузил файл: {filename}]")
-        if analysis:
-            history_lines.append(f"[Анализ документа: {analysis}]")
-        state["history_lines"] = history_lines
-        state["history"] = "\n".join(history_lines)
-
-        files = state.get("uploaded_files", [])
-        files.append({
-            "filename": filename,
-            "type": content_type,
-            "analysis": analysis,
-        })
-        state["uploaded_files"] = files
-        session.state_json = json.dumps(state, ensure_ascii=False)
-        await db.commit()
-
-    return {
-        "status": "ok",
-        "filename": filename,
-        "analysis": analysis,
-    }
-
-
 @app.get("/api/v1/session/{session_id}/result")
 async def get_result(session_id: str):
     async with db_session_maker() as db:
@@ -548,11 +418,10 @@ async def download_pdf(request: Request, session_id: str):
     # download path. The view model builder is a pure function over
     # session state + curated static blocks + KB-normalised symptom
     # labels. All LLM-derived fields (complaints_*, routing.explanation,
-    # specialists[].reason/preparation, questions_for_doctor, what_to_bring,
-    # uploaded_files[].analysis) are intentionally NOT consumed by the
-    # renderer — they remain in state for other surfaces (ResultScreen),
-    # but the PDF is now a presentation layer over routing-time output
-    # plus static content.
+    # specialists[].reason/preparation, questions_for_doctor, what_to_bring)
+    # are intentionally NOT consumed by the renderer — they remain in state
+    # for other surfaces (ResultScreen), but the PDF is now a presentation
+    # layer over routing-time output plus static content.
     view_model = build_view_model(state, session_id, triage_engine.kb)
     pdf_bytes = PDFGenerator.generate(view_model, session_id)
 

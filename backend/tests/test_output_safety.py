@@ -342,28 +342,6 @@ class TestPDFPreflight:
         assert out["history_lines"][0].startswith("Пациент: ")
         assert "парацетамол" in out["history_lines"][0]
 
-    def test_old_unsafe_uploaded_files_analysis_becomes_empty(self):
-        pdf_data = {
-            "uploaded_files": [
-                {"filename": "x.jpg", "type": "image/jpeg",
-                 "analysis": "Документ содержит назначение: Нурофен 200 мг"},
-            ],
-        }
-        out = preflight_pdf_data(pdf_data)
-        # filename and type preserved, analysis emptied.
-        assert out["uploaded_files"][0]["filename"] == "x.jpg"
-        assert out["uploaded_files"][0]["type"] == "image/jpeg"
-        assert out["uploaded_files"][0]["analysis"] == ""
-
-    def test_safe_uploaded_files_analysis_preserved(self):
-        pdf_data = {
-            "uploaded_files": [
-                {"filename": "x.jpg", "analysis": "документ содержит данные анализов"},
-            ],
-        }
-        out = preflight_pdf_data(pdf_data)
-        assert out["uploaded_files"][0]["analysis"] == "документ содержит данные анализов"
-
     def test_unsafe_top_level_field_replaced_with_fallback(self):
         pdf_data = {"routing_explanation": "У вас, вероятно, гастрит"}
         out = preflight_pdf_data(pdf_data)
@@ -512,89 +490,6 @@ class TestLegalGuardrailsHardening:
         from app.prompts.templates import LEGAL_GUARDRAILS
         assert "рекомендуется обратиться к врачу" in LEGAL_GUARDRAILS
         assert "лучше обсудить с врачом очно" in LEGAL_GUARDRAILS
-
-
-class TestFileAnalysisPrompt:
-    """The inline prompt for file analysis (upload endpoint) must no longer
-    request ICD codes / diagnoses verbatim. This is a regression test
-    against accidental revert of the regulatory tightening."""
-
-    def test_prompt_does_not_request_icd_codes(self):
-        # Inspect the source of main.py to confirm the prompt no longer
-        # contains the "Диагнозы, если указаны (код МКБ)" line and that
-        # the new safety framing is in place.
-        from app import main as main_module
-        source = Path(main_module.__file__).read_text(encoding="utf-8")
-        # Old line removed:
-        assert "Диагнозы, если указаны (код МКБ)" not in source
-        # New non-doctor framing present (opening sentence):
-        assert "Не ставишь диагноз" in source
-        # New user-facing-safety framing present:
-        assert "Текст должен быть безопасен для пользовательского интерфейса и PDF" in source
-        # Header of the explicit prohibition block present:
-        assert "НЕ копируй и НЕ называй:" in source
-        # Neutral framing example still present:
-        assert "документ содержит ранее поставленное врачом заключение" in source
-
-
-# ---------------------------------------------------------------------------
-# _build_documents_section — disclaimer + filename-without-analysis
-# ---------------------------------------------------------------------------
-
-
-class TestDocumentsSectionAlwaysDisclaimer:
-    def test_empty_uploaded_files_returns_empty(self):
-        from app.pdf.generator import PDFGenerator
-        assert PDFGenerator._build_documents_section({"uploaded_files": []}) == ""
-
-    def test_disclaimer_and_filename_present_no_analysis_propagation(self):
-        # After PDF redesign, _build_documents_section never propagates
-        # the LLM-derived analysis text into the PDF. Only the filename
-        # and the always-on disclaimer are rendered.
-        from app.pdf.generator import PDFGenerator
-        html = PDFGenerator._build_documents_section({
-            "uploaded_files": [
-                {"filename": "a.pdf", "analysis": "документ содержит данные анализов"},
-            ],
-        })
-        assert "docs-disclaimer" in html
-        assert "врач увидит оригиналы на приёме" in html
-        assert "a.pdf" in html
-        # Analysis text MUST NOT reach the PDF — the redesign treats it
-        # as out-of-scope content (kept in state, surfaced via other
-        # channels if ever needed, never rendered to PDF).
-        assert "документ содержит данные анализов" not in html
-
-    def test_disclaimer_present_when_files_have_empty_analysis(self):
-        from app.pdf.generator import PDFGenerator
-        html = PDFGenerator._build_documents_section({
-            "uploaded_files": [
-                {"filename": "b.jpg", "analysis": ""},
-            ],
-        })
-        # Even with no analysis text, the upload itself is preserved (filename)
-        # and the disclaimer is rendered. The fact of upload is information.
-        assert "docs-disclaimer" in html
-        assert "b.jpg" in html
-
-    def test_no_analysis_paragraph_regardless_of_analysis_state(self):
-        # After redesign, the per-file card is just <div class="uploaded-file">
-        # with the filename — never a <p> with analysis content, regardless
-        # of whether analysis was populated or empty in the input.
-        from app.pdf.generator import PDFGenerator
-        html = PDFGenerator._build_documents_section({
-            "uploaded_files": [
-                {"filename": "c.pdf", "analysis": ""},
-            ],
-        })
-        assert '<div class="uploaded-file">c.pdf</div>' in html
-        # Disclaimer paragraph is allowed (above the file list); per-file
-        # cards must not contain their own <p> elements.
-        file_card_start = html.index('<div class="uploaded-file">')
-        per_card = html[file_card_start:]
-        # The card ends with </div>; before that closer there should be no <p>.
-        end = per_card.index("</div>") + len("</div>")
-        assert "<p>" not in per_card[:end]
 
 
 # ---------------------------------------------------------------------------
@@ -822,8 +717,8 @@ class TestJSONRetryFailurePreservesOriginal:
 
 class TestCrisisPDFWithPreExistingUnsafeState:
     """Crisis sessions (PR #8/#11) hide most routine sections, but history
-    and uploaded_files still render. Any persisted unsafe content from
-    pre-crisis turns must be scrubbed by preflight."""
+    still renders. Any persisted unsafe content from pre-crisis turns must
+    be scrubbed by preflight."""
 
     def test_pre_crisis_unsafe_assistant_lines_omitted_in_crisis_pdf(self):
         pdf_data = {
@@ -850,22 +745,6 @@ class TestCrisisPDFWithPreExistingUnsafeState:
         joined = " ".join(kept)
         assert "мигрень" not in joined
         assert "8-800-2000-122" in joined
-
-    def test_pre_crisis_unsafe_uploaded_file_analysis_emptied_in_crisis_pdf(self):
-        pdf_data = {
-            "is_crisis_only": True,
-            "uploaded_files": [
-                {"filename": "old_anketa.pdf",
-                 "analysis": "Документ содержит назначение: Нурофен 200 мг"},
-            ],
-            "history_lines": ["Пациент: хочу умереть"],
-        }
-        out = preflight_pdf_data(pdf_data)
-        f = out["uploaded_files"][0]
-        # filename preserved (fact-of-upload is information for the doctor)
-        assert f["filename"] == "old_anketa.pdf"
-        # analysis emptied (would be hidden by _build_documents_section)
-        assert f["analysis"] == ""
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ Two entry points for callers:
 - ``validate_output(text)`` — pure check, returns a ``ValidationResult``.
   Caller is responsible for logging on block.
 - ``safe_generate_text(llm_call, system, ...)`` — async wrapper around
-  plain-text LLM calls (clarification, file_analysis). Handles the
+  plain-text LLM calls (clarification). Handles the
   validate → retry-with-reinforced-system → fallback flow and logs each
   outcome. JSON-call sites do their own retry inline because the retry
   must preserve the JSON contract.
@@ -19,7 +19,7 @@ A separate helper ``preflight_pdf_data(pdf_data)`` re-validates persisted
 LLM-derived content already in ``session.state_json`` before it reaches
 ``PDFGenerator``. This guards against unsafe content produced before the
 filter was introduced, or persisted via paths the per-call filter does
-not cover (assistant lines stored in history, ``uploaded_files[].analysis``).
+not cover (assistant lines stored in history).
 
 Logging policy (152-ФЗ): we log channel, field name, matched categories,
 matched pattern ids, retry/fallback flags. We do NOT log the LLM output
@@ -199,9 +199,6 @@ class FALLBACKS:
         "прошлые результаты анализов или обследований, если есть",
         "список лекарств, которые принимаете",
     ]
-    # file_analysis fallback is empty — section still renders filename and
-    # the always-on disclaimer per _build_documents_section.
-    file_analysis = ""
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +265,7 @@ async def safe_generate_text(
     """
     # First call: exceptions propagate to the caller — output safety is not
     # a general outage fallback, and the caller may already have its own
-    # exception handling (e.g. file_analysis wraps the whole thing).
+    # exception handling (e.g. the clarification call site).
     first = await llm_call(system, temperature=base_temperature, use_cache=False)
     result = get_validator().validate(first.text)
     if result.is_safe:
@@ -328,7 +325,6 @@ def preflight_pdf_data(pdf_data: dict) -> dict:
 
     - assistant lines in ``history_lines``: unsafe → omitted entirely
       (no '[удалено]' placeholder). Patient lines are NEVER filtered.
-    - ``uploaded_files[].analysis``: unsafe → "". filename/type preserved.
     - LLM-derived top-level fields: unsafe → fallback (or "").
     - ``specialists[].reason``: unsafe → ``FALLBACKS.specialist_reason``.
     - ``specialists[].preparation[]``: unsafe items dropped. If the list
@@ -348,7 +344,6 @@ def preflight_pdf_data(pdf_data: dict) -> dict:
     out = dict(pdf_data)
 
     out["history_lines"] = _filter_history(pdf_data.get("history_lines", []), validator)
-    out["uploaded_files"] = _filter_uploaded_files(pdf_data.get("uploaded_files", []), validator)
 
     for key, fallback in _PDF_LLM_FIELDS.items():
         val = pdf_data.get(key, "")
@@ -396,25 +391,6 @@ def _filter_history(history_lines: list[str], validator: OutputSafetyValidator) 
                 continue  # omit, no placeholder
         kept.append(line)
     return kept
-
-
-def _filter_uploaded_files(files: list[dict], validator: OutputSafetyValidator) -> list[dict]:
-    out: list[dict] = []
-    for f in files:
-        if not isinstance(f, dict):
-            out.append(f)
-            continue
-        analysis = (f.get("analysis") or "").strip()
-        if analysis:
-            r = validator.validate(analysis)
-            if not r.is_safe:
-                log_block(
-                    channel="pdf_preflight", field_name="uploaded_file_analysis",
-                    result=r, retry_attempted=False, fallback_applied=True,
-                )
-                f = {**f, "analysis": ""}
-        out.append(f)
-    return out
 
 
 def _filter_specialists(

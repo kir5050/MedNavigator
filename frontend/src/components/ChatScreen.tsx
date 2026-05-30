@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { sendMessage, uploadFile, runTriage } from '../api/client'
+import { sendMessage, runTriage } from '../api/client'
 import type { Specialist } from '../api/client'
 import { AppHeader } from './shared/AppHeader'
 import { SectionNum } from './shared/SectionNum'
@@ -39,17 +39,15 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'bot',
-      text: 'Здравствуйте! Опишите, что вас беспокоит. Можно прикрепить фото анализов.',
+      text: 'Здравствуйте! Опишите, что вас беспокоит.',
     },
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [ready, setReady] = useState(false)
-  const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [crisisText, setCrisisText] = useState<string | null>(null)
   const docRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Track times alongside messages so they stay stable across renders
   const [times] = useState<Map<number, string>>(() => new Map())
@@ -91,26 +89,16 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
 
   async function handleSend() {
     const text = input.trim()
-    const file = attachedFile
 
-    if ((!text && !file) || loading || crisisText) return
+    if (!text || loading || crisisText) return
 
     setInput('')
-    setAttachedFile(null)
     setLoading(true)
 
-    const userText = file
-      ? text ? `📎 ${file.name}\n${text}` : `📎 ${file.name}`
-      : text
-    setMessages((prev) => [...prev, { role: 'user', text: userText }])
+    setMessages((prev) => [...prev, { role: 'user', text }])
 
     try {
-      if (file) {
-        await uploadFile(sessionId, file)
-      }
-
-      const messageText = text || (file ? 'Прикрепил файл с результатами' : '')
-      const res = await sendMessage(sessionId, messageText)
+      const res = await sendMessage(sessionId, text)
 
       // Crisis intercept — both is_emergency flag and emergency status are checked.
       if (res.is_emergency || res.session_status === 'emergency') {
@@ -161,24 +149,10 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
         return
       }
 
-      // Collect literal user-authored text for the result screen. Strip the
-      // "📎 filename" prefix that we prepend client-side when the user attaches
-      // a file with no caption — that's not the patient's description, it's a
-      // service line. Keep messages that have actual user text after the
-      // attach prefix (file + caption case).
+      // Collect literal user-authored text for the result screen.
       const userMessages = messages
         .filter((m) => m.role === 'user')
-        .map((m) => {
-          const text = m.text
-          // Pattern: "📎 filename" (alone) — service-only, drop.
-          // Pattern: "📎 filename\n<user text>" — keep only "<user text>".
-          if (text.startsWith('📎 ')) {
-            const nl = text.indexOf('\n')
-            if (nl === -1) return '' // attachment-only message
-            return text.slice(nl + 1).trim()
-          }
-          return text.trim()
-        })
+        .map((m) => m.text.trim())
         .filter((t) => t.length > 0)
 
       onComplete({
@@ -197,14 +171,6 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
     }
   }
 
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
-    setAttachedFile(file)
-    inputRef.current?.focus()
-  }
-
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -219,7 +185,7 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
 
   const sectionLabel = userHasSpoken ? '§ 02 — Уточнение' : '§ 01 — Жалобы'
 
-  const canSend = (input.trim().length > 0 || attachedFile !== null) && !loading
+  const canSend = input.trim().length > 0 && !loading
 
   return (
     <>
@@ -274,47 +240,8 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
           </div>
         )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,.pdf,.jpg,.jpeg,.png"
-          onChange={handleFileSelect}
-          style={{ display: 'none' }}
-        />
-
         <div className="composer">
-          {attachedFile && (
-            <div className="composer-attached">
-              <span aria-hidden="true">📎</span>
-              <span className="composer-attached-name">{attachedFile.name}</span>
-              <button
-                type="button"
-                className="composer-attached-remove"
-                onClick={() => setAttachedFile(null)}
-                aria-label="Убрать файл"
-              >
-                ✕
-              </button>
-            </div>
-          )}
           <div className="composer-row">
-            <button
-              type="button"
-              className="composer-attach"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-              aria-label="Прикрепить файл"
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path
-                  d="M17.5 9.58l-7.08 7.08a4.17 4.17 0 01-5.9-5.9l7.08-7.08a2.78 2.78 0 013.93 3.93L8.46 14.7a1.39 1.39 0 01-1.96-1.97l6.49-6.48"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
             <input
               ref={inputRef}
               type="text"
