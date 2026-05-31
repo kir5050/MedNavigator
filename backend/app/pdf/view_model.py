@@ -6,7 +6,7 @@ a single dict with all content the renderer needs. Static blocks
 (preparation checklist, questions to the doctor, urgent-care guidance,
 disclaimer) live as module-level constants here; dynamic fields come from
 ``state`` (triage urgency, routing specialists, intake symptoms,
-uploaded file names, crisis lock state).
+crisis lock state).
 
 No new LLM calls are made during PDF generation. Routing-time LLM output
 (``run_triage``) is consumed via state but not re-validated here — the
@@ -112,11 +112,10 @@ def build_view_model(state: dict, session_id: str, kb: MedicalKB) -> dict:
     follows what ``send_message`` / ``run_triage`` produce — but every read
     uses ``.get(...)`` so older or partially-populated states do not crash.
 
-    The crisis branch in the renderer uses ``is_crisis_only``,
-    ``history_lines``, and ``uploaded_files``. The non-crisis renderer uses
-    the rest. ``primary_route`` is ``None`` if routing produced no
-    specialists; the renderer is expected to skip the "next step" card in
-    that case.
+    The crisis branch in the renderer uses ``is_crisis_only`` and
+    ``history_lines``. The non-crisis renderer uses the rest.
+    ``primary_route`` is ``None`` if routing produced no specialists; the
+    renderer is expected to skip the "next step" card in that case.
     """
     triage = state.get("triage") or {}
     routing = state.get("routing") or {}
@@ -130,7 +129,6 @@ def build_view_model(state: dict, session_id: str, kb: MedicalKB) -> dict:
 
     primary_route, secondary_routes = _split_specialists(specialists)
     what_patient_described = _normalize_symptoms(state.get("symptoms") or [], kb)
-    uploaded_files = _slim_uploaded_files(state.get("uploaded_files") or [])
 
     raw_history = state.get("history_lines") or []
     # For the crisis branch the renderer iterates history; defence-in-depth
@@ -160,7 +158,6 @@ def build_view_model(state: dict, session_id: str, kb: MedicalKB) -> dict:
         "questions_for_doctor": list(QUESTIONS_FOR_DOCTOR),
         "urgent_care_block": URGENT_CARE_BLOCK,
         "disclaimer": DISCLAIMER,
-        "uploaded_files": uploaded_files,
         # Both consumed only by the crisis branch of the renderer.
         "history_lines": filtered_history,
         "red_flags": red_flags,
@@ -299,9 +296,8 @@ def _normalize_symptoms(state_symptoms: list, kb: MedicalKB) -> list[str]:
 
 def _filter_history_assistant_lines(history_lines: list) -> list[str]:
     """Return a copy of history with unsafe assistant lines omitted.
-    Patient lines are NEVER filtered. Bracket-prefixed system lines
-    (e.g. "[Анализ документа: ...]") are kept as-is — the renderer
-    skips them via its own pattern check."""
+    Patient lines are NEVER filtered. Any bracket-prefixed system lines
+    are kept as-is — the renderer skips them via its own pattern check."""
     out: list[str] = []
     for line in history_lines:
         if not isinstance(line, str):
@@ -334,19 +330,4 @@ def _collect_red_flags(history_lines: list, kb: MedicalKB) -> list[str]:
             if msg and msg not in seen:
                 seen.add(msg)
                 out.append(msg)
-    return out
-
-
-def _slim_uploaded_files(files: list) -> list[dict]:
-    """Strip everything except filename. The PDF no longer renders the
-    LLM-derived analysis (only the upload disclaimer + filename), so we
-    explicitly do not propagate it into the view model."""
-    out: list[dict] = []
-    for f in files:
-        if not isinstance(f, dict):
-            continue
-        filename = (f.get("filename") or "").strip()
-        if not filename:
-            continue
-        out.append({"filename": filename})
     return out

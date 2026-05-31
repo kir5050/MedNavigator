@@ -10,8 +10,8 @@
  *
  *  - `symptomsSummary` (LLM-generated triage summary) is INTENTIONALLY NOT
  *    USED as the primary "Что вы описали" section. That section is built
- *    from the patient's own chat messages (verbatim, with attachment
- *    service lines stripped). `symptomsSummary` is used ONLY as a fallback
+ *    from the patient's own chat messages (verbatim). `symptomsSummary`
+ *    is used ONLY as a fallback
  *    when the user-message transcript is unavailable (e.g. cold reload
  *    onto /result) — clearly marked and labelled differently in the UI.
  *

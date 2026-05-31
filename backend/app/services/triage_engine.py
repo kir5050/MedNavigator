@@ -499,16 +499,8 @@ class TriageEngine:
         triage_json = json.dumps(session_state.get("triage", {}), ensure_ascii=False)
         routing_json = json.dumps(session_state.get("routing", {}), ensure_ascii=False)
 
-        # Include uploaded file analyses for richer PDF
-        uploaded_files = session_state.get("uploaded_files", [])
-        files_summary = ""
-        if uploaded_files:
-            analyses = [f.get("analysis", "") for f in uploaded_files if f.get("analysis")]
-            if analyses:
-                files_summary = "\n".join(analyses)
-
         system, prompt = PromptTemplates.pdf_summary(
-            symptoms_json, triage_json, routing_json, files_summary
+            symptoms_json, triage_json, routing_json
         )
         result = await self.llm.generate(prompt, system, use_cache=False)
         try:

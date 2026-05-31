@@ -6,9 +6,9 @@ session-state reads beyond what the view model already carries.
 
 Two top-level branches:
 - routine (``is_crisis_only=False``): static "next step" card + KB-derived
-  patient-described list + static prep/questions/urgent-care + optional
-  uploaded files. No raw LLM reason, no per-specialist preparation,
-  no causal explanations, no "Описание для врача" section.
+  patient-described list + static prep/questions/urgent-care. No raw LLM
+  reason, no per-specialist preparation, no causal explanations, no
+  "Описание для врача" section.
 - crisis (``is_crisis_only=True``, set by PR #8): crisis banner with the
   hotline + filtered conversation history + red-flags section. PR #11
   visual contract is preserved.
@@ -203,21 +203,6 @@ class PDFGenerator:
     .history-item .text {{
         color: #1E293B;
     }}
-    .docs-disclaimer {{
-        font-size: 9pt;
-        color: #64748B;
-        font-style: italic;
-        margin: 4px 0 12px 0;
-    }}
-    .uploaded-file {{
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 8px;
-        padding: 8px 14px;
-        margin-bottom: 8px;
-        font-size: 10pt;
-        color: #334155;
-    }}
     .disclaimer {{
         margin-top: 24px;
         padding: 10px 14px;
@@ -278,10 +263,6 @@ class PDFGenerator:
         sections.append(PDFGenerator._build_preparation_checklist(view_model))
         sections.append(PDFGenerator._build_questions(view_model))
         sections.append(PDFGenerator._build_urgent_care(view_model))
-
-        docs = PDFGenerator._build_documents_section(view_model)
-        if docs:
-            sections.append(docs)
 
         return "\n\n".join(sections)
 
@@ -361,10 +342,6 @@ class PDFGenerator:
         if history:
             sections.append(history)
 
-        docs = PDFGenerator._build_documents_section(view_model)
-        if docs:
-            sections.append(docs)
-
         red_flags_section = PDFGenerator._build_red_flags_section(view_model)
         if red_flags_section:
             sections.append(red_flags_section)
@@ -429,28 +406,3 @@ class PDFGenerator:
             '<p><strong>При наличии этих симптомов рекомендуется немедленно обратиться за медицинской помощью.</strong></p>'
             '</div>'
         )
-
-    # ------------------------------------------------------------------
-    # Uploaded files — filename only, always-on disclaimer
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _build_documents_section(view_model: dict) -> str:
-        uploaded_files = view_model.get("uploaded_files", [])
-        if not uploaded_files:
-            return ""
-        parts = [
-            '<h2>Загруженные документы</h2>',
-            '<p class="docs-disclaimer">'
-            'Данные из загруженных вами документов учтены при подготовке этого листа. '
-            'Содержимое документов остаётся при вас; врач увидит оригиналы на приёме.'
-            '</p>',
-        ]
-        for f in uploaded_files:
-            if not isinstance(f, dict):
-                continue
-            filename = (f.get("filename") or "").strip()
-            if not filename:
-                continue
-            parts.append(f'<div class="uploaded-file">{escape(filename)}</div>')
-        return "\n".join(parts)

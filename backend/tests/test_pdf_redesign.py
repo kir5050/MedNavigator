@@ -202,47 +202,6 @@ class TestPDFRedesignContent:
         assert len(pdf_bytes) > 1000
 
 
-class TestUploadedFilesRendering:
-    def test_filename_appears_analysis_does_not(self, kb):
-        vm = build_view_model(
-            {
-                "triage": {"urgency": "medium"},
-                "symptoms": [{"name": "кашель"}],
-                "routing": {"specialists": [{"specialty": "Терапевт"}]},
-                "uploaded_files": [
-                    {"filename": "analiz.pdf",
-                     "analysis": "Документ содержит назначение: парацетамол 500 мг"},
-                ],
-            },
-            "def67890", kb,
-        )
-        html = PDFGenerator._build_html(vm, "def67890")
-        assert "analiz.pdf" in html
-        assert "<h2>Загруженные документы</h2>" in html
-        # Always-on disclaimer present.
-        assert "врач увидит оригиналы на приёме" in html
-        # Analysis text MUST NOT propagate, even when it looks "safe":
-        assert "Документ содержит назначение" not in html
-        # And specifically: even if analysis contained medication name,
-        # nothing of it should reach the rendered HTML.
-        assert "парацетамол" not in html
-
-    def test_no_documents_section_when_uploads_empty(self, kb):
-        vm = build_view_model(
-            {
-                "triage": {"urgency": "medium"},
-                "symptoms": [{"name": "кашель"}],
-                "routing": {"specialists": [{"specialty": "Терапевт"}]},
-            },
-            "def67890", kb,
-        )
-        html = PDFGenerator._build_html(vm, "def67890")
-        assert "<h2>Загруженные документы</h2>" not in html
-        # Use rendered-element pattern, not bare class name (the
-        # ``.docs-disclaimer`` selector is in every PDF's <style> block).
-        assert '<p class="docs-disclaimer">' not in html
-
-
 # ---------------------------------------------------------------------------
 # Primary acceptance criterion: PDF download path makes 0 LLM calls.
 # ---------------------------------------------------------------------------
@@ -345,3 +304,52 @@ class TestNoLLMCallsForPDF:
         assert r.status_code == 200
         assert r.content.startswith(b"%PDF")
         assert llm.generate.await_count == 0
+
+
+class TestFileAttachmentsRemoved:
+    """Smoke coverage for the file-attachment removal (feat/remove-file-attachments).
+
+    Confirms the upload endpoint is gone and that the text-only flow
+    (message → red-flag screening → routing → PDF) still works end to end
+    with no file surface remaining.
+    """
+
+    @pytest.mark.asyncio
+    async def test_upload_endpoint_removed(self, client_with_mocked_llm):
+        client, _llm, session_maker = client_with_mocked_llm
+        sid = await _seed_completed_session(session_maker, crisis=False)
+        # The upload route no longer exists — FastAPI has no handler for it.
+        r = await client.post(
+            f"/api/v1/session/{sid}/upload",
+            files={"file": ("x.txt", b"hello", "text/plain")},
+        )
+        assert r.status_code in (404, 405)
+
+    @pytest.mark.asyncio
+    async def test_text_message_redflag_screening(self, client_with_mocked_llm):
+        # Red-flag screening runs on plain text input, pre-LLM. No file
+        # branch is involved. A chest-pain phrase must trigger emergency.
+        client, llm, _session_maker = client_with_mocked_llm
+        start = await client.post("/api/v1/session/start")
+        assert start.status_code in (200, 201)
+        sid = start.json()["session_id"]
+
+        r = await client.post(
+            f"/api/v1/session/{sid}/message",
+            json={"text": "у меня боль в груди"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["is_emergency"] is True
+        # Red-flag is detected before any LLM call.
+        assert llm.generate.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_text_only_session_produces_pdf(self, client_with_mocked_llm):
+        # routing → PDF tail on a text-only session: a valid PDF is produced.
+        client, _llm, session_maker = client_with_mocked_llm
+        sid = await _seed_completed_session(session_maker, crisis=False)
+
+        r = await client.get(f"/api/v1/session/{sid}/pdf")
+        assert r.status_code == 200
+        assert r.content.startswith(b"%PDF")

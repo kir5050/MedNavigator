@@ -63,23 +63,6 @@ export function getPdfUrl(sessionId: string): string {
   return `${API_BASE}/api/v1/session/${sessionId}/pdf`
 }
 
-export interface UploadResponse {
-  status: string
-  filename: string
-  analysis: string
-}
-
-export async function uploadFile(sessionId: string, file: File): Promise<UploadResponse> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await fetch(`${API_BASE}/api/v1/session/${sessionId}/upload`, {
-    method: 'POST',
-    body: formData,
-  })
-  if (!res.ok) throw new Error('Failed to upload file')
-  return res.json()
-}
-
 export async function submitFeedback(
   sessionId: string,
   rating: number,

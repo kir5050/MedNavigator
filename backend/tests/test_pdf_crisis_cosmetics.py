@@ -111,7 +111,7 @@ class TestCrisisOnlyPDFRendering:
         assert "Описание для врача" not in html
         assert "Рекомендуемые специалисты" not in html
 
-    def test_keeps_history_documents_red_flags_and_disclaimer(self, kb):
+    def test_keeps_history_red_flags_and_disclaimer(self, kb):
         vm = build_view_model(
             {
                 "crisis_locked": True,
@@ -121,18 +121,11 @@ class TestCrisisOnlyPDFRendering:
                     "Телефон доверия: 8-800-2000-122 (бесплатно, круглосуточно). "
                     "Скорая помощь: 103 или 112. Вы не одиноки, и помощь доступна.",
                 ],
-                "uploaded_files": [
-                    {"filename": "anketa.pdf", "type": "application/pdf",
-                     "analysis": "this text should NOT propagate to the PDF"},
-                ],
             },
             "abc12345", kb,
         )
         html = PDFGenerator._build_html(vm, "abc12345")
         assert "<h2>Ход опроса</h2>" in html               # conversation log
-        assert "anketa.pdf" in html                        # filename surfaces
-        # Analysis text MUST NOT propagate after the redesign.
-        assert "this text should NOT propagate" not in html
         assert "Внимание: тревожные признаки" in html     # red-flags section
         # Compact two-line disclaimer present (verbatim from view_model).
         assert "MedNavigator не ставит диагноз" in html

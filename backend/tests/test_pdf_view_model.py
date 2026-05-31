@@ -2,8 +2,8 @@
 
 Covers urgency mapping, primary/secondary specialist split, KB-normalised
 patient-described symptoms with deduplication, fallback path for symptoms
-outside the KB, slim uploaded_files, crisis flag passthrough, and the
-presence of static content blocks.
+outside the KB, crisis flag passthrough, and the presence of static
+content blocks.
 """
 
 import sys
@@ -296,30 +296,6 @@ class TestWhatPatientDescribed:
 
 
 # ---------------------------------------------------------------------------
-# Uploaded files — slim, no analysis
-# ---------------------------------------------------------------------------
-
-
-class TestUploadedFilesSlimmed:
-    def test_only_filename_propagated(self, kb):
-        vm = build_view_model(
-            {"uploaded_files": [
-                {"filename": "analiz.pdf", "type": "application/pdf",
-                 "analysis": "Documents contains diagnosis: gastritis"},
-            ]},
-            "abcdefgh", kb,
-        )
-        assert vm["uploaded_files"] == [{"filename": "analiz.pdf"}]
-
-    def test_empty_filename_is_dropped(self, kb):
-        vm = build_view_model(
-            {"uploaded_files": [{"filename": "", "analysis": "..."}]},
-            "abcdefgh", kb,
-        )
-        assert vm["uploaded_files"] == []
-
-
-# ---------------------------------------------------------------------------
 # Crisis flag passthrough
 # ---------------------------------------------------------------------------
 
@@ -408,7 +384,7 @@ class TestViewModelShape:
             "session_id_short", "generated_at", "is_crisis_only", "urgency",
             "primary_route", "secondary_routes", "what_patient_described",
             "preparation_checklist", "questions_for_doctor",
-            "urgent_care_block", "disclaimer", "uploaded_files",
+            "urgent_care_block", "disclaimer",
             "history_lines", "red_flags",
         ):
             assert key in vm, f"missing key: {key}"

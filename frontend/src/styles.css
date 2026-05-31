@@ -467,53 +467,12 @@ a:hover { color: var(--copper-2); text-decoration: underline; }
   padding: 8px 8px 8px 12px;
   box-shadow: 0 -8px 24px -14px rgba(26,23,20,0.18);
 }
-.composer-attached {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--copper-soft);
-  border: 1px solid var(--copper-soft-2);
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--ink);
-}
-.composer-attached-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.composer-attached-remove {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  color: var(--text-mute);
-  border-radius: 4px;
-}
-.composer-attached-remove:hover { color: var(--copper); background: rgba(176,89,58,0.08); }
 .composer-row {
   display: grid;
-  grid-template-columns: 36px 1fr 40px;
+  grid-template-columns: 1fr 40px;
   gap: 6px;
   align-items: end;
 }
-.composer-attach {
-  width: 36px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  color: var(--text-mute);
-  border-radius: 8px;
-  transition: color .2s var(--ease), background .2s var(--ease);
-}
-.composer-attach:hover { color: var(--copper); background: var(--copper-soft); }
-.composer-attach:disabled { opacity: 0.4; cursor: not-allowed; }
 .composer-input {
   appearance: none;
   width: 100%;
@@ -546,7 +505,6 @@ a:hover { color: var(--copper-2); text-decoration: underline; }
 /* Composer locked state (crisis) */
 .composer.locked { opacity: 0.6; pointer-events: none; }
 .composer.locked .composer-input,
-.composer.locked .composer-attach,
 .composer.locked .composer-send { pointer-events: none; }
 
 /* ============ Crisis state — locked ============ */
