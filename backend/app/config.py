@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     # App
     app_env: str = "development"
     log_level: str = "info"
+    # Voice input (PR B) feature flag — off by default
+    voice_input_enabled: bool = False
     database_url: str = "sqlite+aiosqlite:///data/mednavigator.db"
     cache_dir: str = "./cache"
 
