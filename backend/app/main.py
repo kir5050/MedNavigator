@@ -1,3 +1,5 @@
+import email.parser
+import email.policy
 import json
 import logging
 import traceback as tb_module
@@ -11,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.requests import ClientDisconnect
 from sqlalchemy import func, select, text
 
 from app.config import settings
@@ -30,6 +33,7 @@ from app.models.database import (
 )
 from app.pdf import PDFGenerator
 from app.pdf.view_model import build_view_model
+from app.services import stt
 from app.services.triage_engine import TriageEngine
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
@@ -58,6 +62,19 @@ app.add_exception_handler(
         content={"detail": "Слишком много запросов. Пожалуйста, подождите и попробуйте снова."},
     ),
 )
+
+# Registered BEFORE CORSMiddleware on purpose: Starlette makes the
+# last-added middleware outermost, so CORS keeps handling preflights
+# uniformly for every path while this cloak answers all other requests.
+@app.middleware("http")
+async def voice_route_cloak(request: Request, call_next):
+    # While the voice flag is off, /api/v1/transcribe must be
+    # indistinguishable from a missing route for ANY method — the router
+    # would otherwise leak its existence via 405 + Allow header.
+    if request.url.path == "/api/v1/transcribe" and not settings.voice_input_enabled:
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -461,6 +478,105 @@ async def submit_feedback(req: FeedbackRequest):
         await db.commit()
 
     return {"status": "ok"}
+
+
+# --- Voice input (behind VOICE_INPUT_ENABLED) ---
+
+VOICE_MAX_AUDIO_BYTES = 15 * 1024 * 1024
+# Allowance for the multipart envelope on top of the audio payload cap.
+VOICE_MAX_BODY_BYTES = VOICE_MAX_AUDIO_BYTES + 64 * 1024
+
+# Maps accepted upload content types to OpenRouter `input_audio.format`
+# values. OpenRouter has no "mp4" format: iOS Safari records AAC in an
+# MP4 container, which OpenRouter accepts as "m4a".
+VOICE_AUDIO_FORMATS = {
+    "audio/webm": "webm",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/ogg": "ogg",
+    "audio/wav": "wav",
+}
+
+
+def _voice_rate_limit_exempt(*_args, **_kwargs) -> bool:
+    # While the flag is off the endpoint must answer a plain 404 even under
+    # request floods — a 429 would reveal that the route exists.
+    return not settings.voice_input_enabled
+
+
+async def _read_voice_upload(request: Request) -> tuple[bytes, str]:
+    """Extract the `audio` part of a multipart/form-data body fully in memory.
+
+    Returns (audio_bytes, base_content_type). Deliberately avoids FastAPI's
+    UploadFile: starlette spools parts larger than 1 MB into temporary files
+    on disk, while raw voice audio must never touch disk (fixed privacy
+    decision for voice input). The body size cap keeps the in-memory parse
+    bounded; the stdlib email parser handles the multipart format.
+    """
+    content_type = request.headers.get("content-type", "")
+    if not content_type.lower().strip().startswith("multipart/form-data"):
+        raise HTTPException(415, "Expected multipart/form-data")
+
+    body = bytearray()
+    try:
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > VOICE_MAX_BODY_BYTES:
+                raise HTTPException(413, "Audio file too large")
+    except ClientDisconnect:
+        # Routine on mobile (screen lock, network switch mid-upload).
+        # Must not reach the global handler — that would 500 and fire a
+        # Telegram alert for a non-error.
+        raise HTTPException(400, "Upload aborted") from None
+
+    message = email.parser.BytesParser(policy=email.policy.HTTP).parsebytes(
+        b"Content-Type: " + content_type.encode("utf-8") + b"\r\n\r\n" + bytes(body)
+    )
+    for part in message.iter_parts():
+        if part.get_param("name", header="content-disposition") == "audio":
+            # get_content_type() lowercases and drops parameters, so
+            # "audio/webm;codecs=opus" from MediaRecorder matches the map.
+            return part.get_payload(decode=True) or b"", part.get_content_type()
+    raise HTTPException(422, "Missing audio field")
+
+
+# include_in_schema=False keeps the internal endpoint out of
+# /docs and openapi.json regardless of the flag state.
+@app.post("/api/v1/transcribe", include_in_schema=False)
+# Anonymous endpoint that proxies a paid STT API, so it gets a strict
+# in-memory per-IP limit through the existing slowapi limiter.
+# TODO: заменить на нормальный механизм после внедрения API-auth
+@limiter.limit("10 per 10 minutes", exempt_when=_voice_rate_limit_exempt)
+async def transcribe(request: Request):
+    if not settings.voice_input_enabled:
+        # Defense-in-depth: voice_route_cloak already answers 404 for any
+        # method while the flag is off; keep the handler-level check too.
+        raise HTTPException(404, "Not Found")
+
+    audio_bytes, content_type = await _read_voice_upload(request)
+
+    audio_format = VOICE_AUDIO_FORMATS.get(content_type)
+    if audio_format is None:
+        raise HTTPException(415, "Unsupported audio content type")
+    if len(audio_bytes) > VOICE_MAX_AUDIO_BYTES:
+        raise HTTPException(413, "Audio file too large")
+
+    # Metadata only — the audio body and the transcript are never logged.
+    logger.info(
+        "transcribe: content_type=%s size_bytes=%d", content_type, len(audio_bytes)
+    )
+
+    try:
+        text, duration_ms = await stt.transcribe_audio(
+            audio_bytes, audio_format, settings.openrouter_api_key
+        )
+    except stt.TranscriptionError:
+        return JSONResponse(status_code=502, content={"error": "stt_failed"})
+
+    if len(text) < 5:
+        return JSONResponse(status_code=422, content={"error": "empty_transcript"})
+
+    return {"text": text, "duration_ms": duration_ms}
 
 
 async def verify_admin(authorization: str = Header(default="")):

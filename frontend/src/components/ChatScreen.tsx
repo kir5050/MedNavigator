@@ -4,6 +4,7 @@ import type { Specialist } from '../api/client'
 import { AppHeader } from './shared/AppHeader'
 import { SectionNum } from './shared/SectionNum'
 import { CrisisScreen } from './CrisisScreen'
+import { VoiceInput, VOICE_INPUT_ENABLED } from './VoiceInput'
 
 interface ChatMessage {
   role: 'user' | 'bot'
@@ -47,7 +48,7 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
   const [ready, setReady] = useState(false)
   const [crisisText, setCrisisText] = useState<string | null>(null)
   const docRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Track times alongside messages so they stay stable across renders
   const [times] = useState<Map<number, string>>(() => new Map())
@@ -66,6 +67,14 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
     if (!el) return
     el.scrollTop = el.scrollHeight
   }, [messages, loading])
+
+  // Auto-grow the composer textarea up to the CSS max-height.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [input])
 
   // Progress state — derived from chat state
   const userHasSpoken = messages.some((m) => m.role === 'user')
@@ -178,6 +187,18 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
     }
   }
 
+  function handleVoiceTranscript(text: string) {
+    // Append after a newline when the field already has text — never overwrite.
+    setInput((prev) => (prev.trim() ? `${prev}\n${text}` : text))
+    // Keep the field editable and put the caret at the end after rerender.
+    window.setTimeout(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(el.value.length, el.value.length)
+    }, 0)
+  }
+
   // Crisis takes over the entire flow — composer locked, no CTA, no auto-timeout.
   if (crisisText) {
     return <CrisisScreen emergencyText={crisisText} onRestart={onRestart} />
@@ -241,10 +262,10 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
         )}
 
         <div className="composer">
-          <div className="composer-row">
-            <input
+          <div className={`composer-row${VOICE_INPUT_ENABLED ? ' with-voice' : ''}`}>
+            <textarea
               ref={inputRef}
-              type="text"
+              rows={1}
               className="composer-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -259,6 +280,13 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
               autoComplete="off"
               autoCapitalize="sentences"
             />
+            {VOICE_INPUT_ENABLED && (
+              <VoiceInput
+                disabled={loading}
+                inputEmpty={input.trim().length === 0}
+                onTranscript={handleVoiceTranscript}
+              />
+            )}
             <button
               type="button"
               className="composer-send"
