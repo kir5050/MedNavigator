@@ -398,6 +398,45 @@ class TestSttService:
             )
 
     @pytest.mark.asyncio
+    async def test_model_override_is_sent(self):
+        captured: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(200, json={"text": "Болит голова и тошнит"})
+
+        await stt.transcribe_audio(
+            b"raw",
+            "webm",
+            "k",
+            model="openai/whisper-large-v3",
+            transport=httpx.MockTransport(handler),
+        )
+        assert captured["body"]["model"] == "openai/whisper-large-v3"
+
+    @pytest.mark.asyncio
+    async def test_upstream_error_message_is_logged_without_content(self, caplog):
+        """On a 4xx the upstream error.message must reach the logs (it is
+        OpenRouter's diagnostic for a FAILED request — no transcript exists),
+        while audio bytes still never do."""
+        audio = b"SECRET-AUDIO-BYTES" * 3
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                403,
+                json={"error": {"code": 403, "message": "Country, region, or territory not supported"}},
+            )
+
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(stt.TranscriptionError):
+                await stt.transcribe_audio(
+                    audio, "webm", "k", transport=httpx.MockTransport(handler)
+                )
+        assert "Country, region, or territory not supported" in caplog.text
+        assert "SECRET-AUDIO-BYTES" not in caplog.text
+        assert base64.b64encode(audio).decode("ascii") not in caplog.text
+
+    @pytest.mark.asyncio
     async def test_non_object_json_response_raises(self):
         """A 200 whose body is valid JSON but not an object must raise
         TranscriptionError, not AttributeError."""
