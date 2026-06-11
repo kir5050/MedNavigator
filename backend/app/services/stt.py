@@ -83,9 +83,12 @@ async def transcribe_audio(
         raise TranscriptionError(f"stt status {resp.status_code}")
 
     try:
-        text = resp.json().get("text", "")
+        data = resp.json()
     except ValueError as exc:
         raise TranscriptionError("stt response is not json") from exc
+    if not isinstance(data, dict):
+        raise TranscriptionError("stt response is not an object")
+    text = data.get("text", "")
     if not isinstance(text, str):
         raise TranscriptionError("stt response text is not a string")
 

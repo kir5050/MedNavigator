@@ -64,6 +64,9 @@ export function VoiceInput({ disabled, inputEmpty, onTranscript }: Props) {
   const tickTimerRef = useRef<number | null>(null)
   const autoStopTimerRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
+  // Synchronous re-entry guard: two rapid mic taps both pass the phase
+  // check before React applies state, which would leak a live MediaStream.
+  const startingRef = useRef(false)
 
   useEffect(() => {
     mountedRef.current = true
@@ -100,58 +103,66 @@ export function VoiceInput({ disabled, inputEmpty, onTranscript }: Props) {
   }
 
   async function startRecording() {
-    if (phase !== 'idle' || disabled) return
-    setNotice(null)
-    setErrorText(null)
-    setRetryBlob(null)
-
-    let stream: MediaStream
+    if (startingRef.current || phase !== 'idle' || disabled) return
+    startingRef.current = true
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      setErrorText(COPY.micDenied)
-      return
-    }
-    if (!mountedRef.current) {
-      stream.getTracks().forEach((t) => t.stop())
-      return
-    }
+      setNotice(null)
+      setErrorText(null)
+      setRetryBlob(null)
 
-    const mimeType = MIME_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t))
-    let recorder: MediaRecorder
-    try {
-      recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
-    } catch {
-      stream.getTracks().forEach((t) => t.stop())
-      setErrorText(COPY.requestFailed)
-      return
-    }
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      } catch {
+        setErrorText(COPY.micDenied)
+        return
+      }
+      if (!mountedRef.current || recorderRef.current) {
+        stream.getTracks().forEach((t) => t.stop())
+        return
+      }
 
-    pickedMimeRef.current = mimeType ?? ''
-    chunksRef.current = []
-    recorder.ondataavailable = (e: BlobEvent) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data)
+      const mimeType = MIME_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t))
+      let recorder: MediaRecorder
+      try {
+        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      } catch {
+        stream.getTracks().forEach((t) => t.stop())
+        setErrorText(COPY.requestFailed)
+        return
+      }
+
+      pickedMimeRef.current = mimeType ?? ''
+      chunksRef.current = []
+      recorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data)
+      }
+      recorder.onstop = handleRecorderStop
+      recorderRef.current = recorder
+      streamRef.current = stream
+      startedAtRef.current = Date.now()
+      autoStoppedRef.current = false
+      setElapsedMs(0)
+      recorder.start()
+      setPhase('recording')
+      tickTimerRef.current = window.setInterval(() => {
+        setElapsedMs(Date.now() - startedAtRef.current)
+      }, 250)
+      autoStopTimerRef.current = window.setTimeout(() => {
+        autoStoppedRef.current = true
+        stopRecording()
+      }, MAX_RECORDING_MS)
+    } finally {
+      startingRef.current = false
     }
-    recorder.onstop = handleRecorderStop
-    recorderRef.current = recorder
-    streamRef.current = stream
-    startedAtRef.current = Date.now()
-    autoStoppedRef.current = false
-    setElapsedMs(0)
-    recorder.start()
-    setPhase('recording')
-    tickTimerRef.current = window.setInterval(() => {
-      setElapsedMs(Date.now() - startedAtRef.current)
-    }, 250)
-    autoStopTimerRef.current = window.setTimeout(() => {
-      autoStoppedRef.current = true
-      stopRecording()
-    }, MAX_RECORDING_MS)
   }
 
   function stopRecording() {
     const recorder = recorderRef.current
     if (!recorder || recorder.state === 'inactive') return
+    // Kill the pending autostop right away so it cannot fire between a
+    // manual stop and the async onstop, mislabeling the stop as automatic.
+    clearTimers()
     recorder.stop() // final dataavailable + onstop fire asynchronously
   }
 

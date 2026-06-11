@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.requests import ClientDisconnect
 from sqlalchemy import func, select, text
 
 from app.config import settings
@@ -61,6 +62,19 @@ app.add_exception_handler(
         content={"detail": "Слишком много запросов. Пожалуйста, подождите и попробуйте снова."},
     ),
 )
+
+# Registered BEFORE CORSMiddleware on purpose: Starlette makes the
+# last-added middleware outermost, so CORS keeps handling preflights
+# uniformly for every path while this cloak answers all other requests.
+@app.middleware("http")
+async def voice_route_cloak(request: Request, call_next):
+    # While the voice flag is off, /api/v1/transcribe must be
+    # indistinguishable from a missing route for ANY method — the router
+    # would otherwise leak its existence via 405 + Allow header.
+    if request.url.path == "/api/v1/transcribe" and not settings.voice_input_enabled:
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -504,10 +518,16 @@ async def _read_voice_upload(request: Request) -> tuple[bytes, str]:
         raise HTTPException(415, "Expected multipart/form-data")
 
     body = bytearray()
-    async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > VOICE_MAX_BODY_BYTES:
-            raise HTTPException(413, "Audio file too large")
+    try:
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > VOICE_MAX_BODY_BYTES:
+                raise HTTPException(413, "Audio file too large")
+    except ClientDisconnect:
+        # Routine on mobile (screen lock, network switch mid-upload).
+        # Must not reach the global handler — that would 500 and fire a
+        # Telegram alert for a non-error.
+        raise HTTPException(400, "Upload aborted") from None
 
     message = email.parser.BytesParser(policy=email.policy.HTTP).parsebytes(
         b"Content-Type: " + content_type.encode("utf-8") + b"\r\n\r\n" + bytes(body)
@@ -520,14 +540,17 @@ async def _read_voice_upload(request: Request) -> tuple[bytes, str]:
     raise HTTPException(422, "Missing audio field")
 
 
-@app.post("/api/v1/transcribe")
+# include_in_schema=False keeps the internal endpoint out of
+# /docs and openapi.json regardless of the flag state.
+@app.post("/api/v1/transcribe", include_in_schema=False)
 # Anonymous endpoint that proxies a paid STT API, so it gets a strict
 # in-memory per-IP limit through the existing slowapi limiter.
 # TODO: заменить на нормальный механизм после внедрения API-auth
 @limiter.limit("10 per 10 minutes", exempt_when=_voice_rate_limit_exempt)
 async def transcribe(request: Request):
     if not settings.voice_input_enabled:
-        # Disabled feature is indistinguishable from a missing route.
+        # Defense-in-depth: voice_route_cloak already answers 404 for any
+        # method while the flag is off; keep the handler-level check too.
         raise HTTPException(404, "Not Found")
 
     audio_bytes, content_type = await _read_voice_upload(request)

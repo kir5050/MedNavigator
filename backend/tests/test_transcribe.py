@@ -71,6 +71,25 @@ class TestFeatureFlag:
         assert disabled.json() == missing.json()
 
     @pytest.mark.asyncio
+    async def test_flag_off_non_post_methods_also_404(self, voice_off, stt_ok):
+        """The router would answer 405 + Allow for a registered route, which
+        reveals its existence — the cloak middleware must answer 404 for any
+        method, exactly like a missing route."""
+        async with _client() as client:
+            for method in ("GET", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"):
+                probed = await client.request(method, "/api/v1/transcribe")
+                missing = await client.request(method, "/api/v1/no-such-route")
+                assert probed.status_code == missing.status_code == 404, method
+                assert "allow" not in probed.headers, method
+                if method != "HEAD":
+                    assert probed.json() == missing.json(), method
+
+    @pytest.mark.asyncio
+    async def test_endpoint_hidden_from_openapi_schema(self, voice_on):
+        paths = main_module.app.openapi().get("paths", {})
+        assert "/api/v1/transcribe" not in paths
+
+    @pytest.mark.asyncio
     async def test_flag_off_flood_never_returns_429(self, voice_off, stt_ok):
         """Rate limiter must be exempt while the flag is off: a 429 would
         reveal that the route exists."""
@@ -123,6 +142,30 @@ class TestValidation:
             )
         assert resp.status_code == 422
         stt_ok.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_client_disconnect_mid_upload_is_400_not_500(self):
+        """An aborted upload raises ClientDisconnect from request.stream();
+        it must become a 400, not escape to the global 500 handler (which
+        would fire a Telegram alert for a routine mobile network drop)."""
+        from fastapi import HTTPException
+        from starlette.requests import Request as StarletteRequest
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/transcribe",
+            "headers": [(b"content-type", b"multipart/form-data; boundary=x")],
+            "query_string": b"",
+        }
+
+        async def receive():
+            return {"type": "http.disconnect"}
+
+        request = StarletteRequest(scope, receive)
+        with pytest.raises(HTTPException) as exc_info:
+            await main_module._read_voice_upload(request)
+        assert exc_info.value.status_code == 400
 
 
 class TestTranscription:
@@ -348,6 +391,18 @@ class TestSttService:
     async def test_non_json_response_raises(self):
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, content=b"<html>not json</html>")
+
+        with pytest.raises(stt.TranscriptionError):
+            await stt.transcribe_audio(
+                b"raw", "webm", "k", transport=httpx.MockTransport(handler)
+            )
+
+    @pytest.mark.asyncio
+    async def test_non_object_json_response_raises(self):
+        """A 200 whose body is valid JSON but not an object must raise
+        TranscriptionError, not AttributeError."""
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=["unexpected", "array"])
 
         with pytest.raises(stt.TranscriptionError):
             await stt.transcribe_audio(
