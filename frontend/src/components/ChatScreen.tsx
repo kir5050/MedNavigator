@@ -68,13 +68,33 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
     el.scrollTop = el.scrollHeight
   }, [messages, loading])
 
-  // Auto-grow the composer textarea up to the CSS max-height.
-  useEffect(() => {
+  // Auto-grow the composer textarea up to the CSS max-height. Also called
+  // when the voice controls change phase: the wider stop/timer cluster
+  // narrows the textarea column, rewrapping the content — without a
+  // recalc the stale height clips the last line.
+  function recalcComposerHeight() {
     const el = inputRef.current
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
-  }, [input])
+  }
+
+  useEffect(recalcComposerHeight, [input])
+
+  // Belt-and-braces for width changes that have no React signal
+  // (e.g. device rotation).
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let lastWidth = el.offsetWidth
+    const observer = new ResizeObserver(() => {
+      if (el.offsetWidth === lastWidth) return
+      lastWidth = el.offsetWidth
+      recalcComposerHeight()
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   // Progress state — derived from chat state
   const userHasSpoken = messages.some((m) => m.role === 'user')
@@ -285,6 +305,7 @@ export function ChatScreen({ sessionId, onComplete, onRestart }: Props) {
                 disabled={loading}
                 inputEmpty={input.trim().length === 0}
                 onTranscript={handleVoiceTranscript}
+                onLayoutChange={recalcComposerHeight}
               />
             )}
             <button

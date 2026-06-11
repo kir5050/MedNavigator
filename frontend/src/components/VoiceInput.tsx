@@ -31,6 +31,8 @@ interface Props {
   /** True when the composer field is empty — hides the stale review caption. */
   inputEmpty: boolean
   onTranscript: (text: string) => void
+  /** Called after phase transitions that resize the controls cluster. */
+  onLayoutChange?: () => void
 }
 
 function isSupported(): boolean {
@@ -48,7 +50,7 @@ function formatTimer(ms: number): string {
   return `${mm}:${ss}`
 }
 
-export function VoiceInput({ disabled, inputEmpty, onTranscript }: Props) {
+export function VoiceInput({ disabled, inputEmpty, onTranscript, onLayoutChange }: Props) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [elapsedMs, setElapsedMs] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
@@ -67,6 +69,12 @@ export function VoiceInput({ disabled, inputEmpty, onTranscript }: Props) {
   // Synchronous re-entry guard: two rapid mic taps both pass the phase
   // check before React applies state, which would leak a live MediaStream.
   const startingRef = useRef(false)
+
+  // Runs after the DOM for the new phase is committed, so the parent
+  // measures the final layout.
+  useEffect(() => {
+    onLayoutChange?.()
+  }, [phase])
 
   useEffect(() => {
     mountedRef.current = true
