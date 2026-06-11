@@ -63,6 +63,43 @@ export function getPdfUrl(sessionId: string): string {
   return `${API_BASE}/api/v1/session/${sessionId}/pdf`
 }
 
+export interface TranscribeResponse {
+  text: string
+  duration_ms: number
+}
+
+export type TranscribeFailureKind =
+  | 'empty_transcript'
+  | 'rate_limited'
+  | 'stt_failed'
+  | 'network'
+
+export class TranscribeError extends Error {
+  readonly kind: TranscribeFailureKind
+
+  constructor(kind: TranscribeFailureKind) {
+    super(kind)
+    this.kind = kind
+  }
+}
+
+export async function transcribeAudio(audio: Blob): Promise<TranscribeResponse> {
+  const form = new FormData()
+  form.append('audio', audio, 'recording')
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}/api/v1/transcribe`, { method: 'POST', body: form })
+  } catch {
+    throw new TranscribeError('network')
+  }
+  if (!res.ok) {
+    if (res.status === 422) throw new TranscribeError('empty_transcript')
+    if (res.status === 429) throw new TranscribeError('rate_limited')
+    throw new TranscribeError('stt_failed')
+  }
+  return res.json()
+}
+
 export async function submitFeedback(
   sessionId: string,
   rating: number,
