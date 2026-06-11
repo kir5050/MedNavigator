@@ -30,6 +30,9 @@ services:
     environment:
       # Production: VITE_API_URL=https://api.navimedic.ru
       - VITE_API_URL=http://localhost:8080
+      # Interpolated from root .env (or shell env); off by default.
+      # Backend counterpart VOICE_INPUT_ENABLED comes via env_file above.
+      - VITE_VOICE_INPUT_ENABLED=${VITE_VOICE_INPUT_ENABLED:-false}
     depends_on:
       - backend
     restart: unless-stopped
