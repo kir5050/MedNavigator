@@ -31,6 +31,7 @@ async def transcribe_audio(
     audio_bytes: bytes,
     audio_format: str,
     api_key: str,
+    model: str = STT_MODEL,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> tuple[str, int]:
     """Transcribe in-memory audio bytes; return (trimmed text, duration_ms).
@@ -41,7 +42,7 @@ async def transcribe_audio(
     `transport` is injectable for tests only.
     """
     payload = {
-        "model": STT_MODEL,
+        "model": model,
         "input_audio": {
             "data": base64.b64encode(audio_bytes).decode("ascii"),
             "format": audio_format,
@@ -65,7 +66,7 @@ async def transcribe_audio(
         logger.warning(
             "STT request failed: error=%s model=%s duration_ms=%d",
             type(exc).__name__,
-            STT_MODEL,
+            model,
             duration_ms,
         )
         raise TranscriptionError("stt request failed") from exc
@@ -74,12 +75,29 @@ async def transcribe_audio(
     # Metadata only — never log audio bytes or transcript content.
     logger.info(
         "STT response: model=%s status=%d duration_ms=%d",
-        STT_MODEL,
+        model,
         resp.status_code,
         duration_ms,
     )
 
     if resp.status_code != 200:
+        # Surface the upstream error reason for operations. This is
+        # OpenRouter's own diagnostic text from a FAILED request — there is
+        # no transcript and no audio in it, so logging it keeps the
+        # metadata-only rule intact.
+        upstream_message = ""
+        try:
+            err = resp.json().get("error")
+            if isinstance(err, dict):
+                upstream_message = str(err.get("message", ""))[:200]
+        except (ValueError, AttributeError):
+            pass
+        logger.warning(
+            "STT upstream error: model=%s status=%d message=%s",
+            model,
+            resp.status_code,
+            upstream_message or "<none>",
+        )
         raise TranscriptionError(f"stt status {resp.status_code}")
 
     try:

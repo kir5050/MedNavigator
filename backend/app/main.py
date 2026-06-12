@@ -568,7 +568,10 @@ async def transcribe(request: Request):
 
     try:
         text, duration_ms = await stt.transcribe_audio(
-            audio_bytes, audio_format, settings.openrouter_api_key
+            audio_bytes,
+            audio_format,
+            settings.openrouter_api_key,
+            model=settings.voice_stt_model,
         )
     except stt.TranscriptionError:
         return JSONResponse(status_code=502, content={"error": "stt_failed"})

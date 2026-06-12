@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     log_level: str = "info"
     # Voice input (PR B) feature flag — off by default
     voice_input_enabled: bool = False
+    # STT model slug on OpenRouter. The default is served by OpenAI, which
+    # rejects requests originating from some regions; openai/whisper-large-v3
+    # (open weights, third-party hosted) is the drop-in fallback for those.
+    voice_stt_model: str = "openai/gpt-4o-transcribe"
     database_url: str = "sqlite+aiosqlite:///data/mednavigator.db"
     cache_dir: str = "./cache"
 
