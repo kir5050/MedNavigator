@@ -507,6 +507,12 @@ a:hover { color: var(--copper-2); text-decoration: underline; }
 
 /* ============ Voice input (behind VITE_VOICE_INPUT_ENABLED) ============ */
 .composer-row.with-voice { grid-template-columns: 1fr auto 40px; }
+/* While recording, the wider stop/timer cluster narrows the input column
+   and the placeholder would wrap into a clipped second line — hide it;
+   the recording hint right below already instructs the user. */
+.composer-row.with-voice:has(.voice-stop) .composer-input::placeholder {
+  color: transparent;
+}
 .composer-row.with-voice .composer-input { grid-row: 1; grid-column: 1; }
 .composer-row.with-voice .voice-controls { grid-row: 1; grid-column: 2; }
 .composer-row.with-voice .composer-send { grid-row: 1; grid-column: 3; }
