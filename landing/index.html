@@ -1755,6 +1755,13 @@ section[id] { scroll-margin-top: 110px; }
     width: 100%;
     justify-content: center;
   }
+
+  /* Top bars scroll away with the page on mobile instead of staying fixed */
+  nav.editorial,
+  .meta-strip {
+    position: absolute;
+  }
+  section[id] { scroll-margin-top: 24px; }
 }
 
 @media (max-width: 480px) {
