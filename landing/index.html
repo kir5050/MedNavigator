@@ -264,6 +264,18 @@ nav.editorial .logo { color: var(--ink-text); }
   background: rgba(26,23,20,0.04);
 }
 
+/* Hero demo CTA — copper accent fill, equal visual weight to the primary CTA */
+.btn-demo {
+  background: var(--copper);
+  color: #fff;
+  border-color: var(--copper);
+}
+.btn-demo:hover {
+  background: #934A30;
+  border-color: #934A30;
+  color: #fff;
+}
+
 .btn-white {
   display: inline-flex; align-items: center; gap: 10px;
   padding: 14px 22px;
@@ -742,6 +754,24 @@ nav.editorial .logo { color: var(--ink-text); }
   color: var(--text-secondary);
   line-height: 1.6;
   letter-spacing: -0.003em;
+}
+
+/* ============================================================
+   TRY CTA — standalone demo link after § 02
+   ============================================================ */
+.try-cta { padding: clamp(56px, 8vw, 104px) 0; }
+.try-cta-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.try-cta-note {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-muted);
+  letter-spacing: -0.003em;
+  margin-top: 14px;
 }
 
 /* ============================================================
@@ -1721,6 +1751,10 @@ section[id] { scroll-margin-top: 110px; }
     flex: 1 1 100%;
     justify-content: center;
   }
+  .try-cta .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1816,7 +1850,7 @@ section[id] { scroll-margin-top: 110px; }
           Обсудить пилот
           <span class="arrow" aria-hidden="true"></span>
         </a>
-        <a href="https://app.navimedic.ru" class="btn-secondary">Посмотреть сценарий пациента</a>
+        <a href="https://app.navimedic.ru" class="btn-secondary btn-demo">Посмотреть сценарий пациента</a>
       </div>
 
       <div class="hero-trust" role="note" aria-label="Регуляторная рамка">
@@ -1895,6 +1929,17 @@ section[id] { scroll-margin-top: 110px; }
         <p>Безопасный следующий шаг — какой специалист подходит для очной оценки, насколько срочно записаться, как подготовиться к визиту.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- TRY CTA — direct link to the live service -->
+<section class="try-cta fade-up">
+  <div class="container try-cta-inner">
+    <a href="https://app.navimedic.ru" target="_blank" rel="noopener" class="btn-primary">
+      Попробовать сервис
+      <span class="arrow" aria-hidden="true"></span>
+    </a>
+    <p class="try-cta-note">Без регистрации и личных данных</p>
   </div>
 </section>
 
