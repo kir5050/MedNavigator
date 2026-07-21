@@ -146,8 +146,8 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_client_disconnect_mid_upload_is_400_not_500(self):
         """An aborted upload raises ClientDisconnect from request.stream();
-        it must become a 400, not escape to the global 500 handler (which
-        would fire a Telegram alert for a routine mobile network drop)."""
+        it must become a 400, not escape to the global 500 handler (a
+        routine mobile network drop is not a server error)."""
         from fastapi import HTTPException
         from starlette.requests import Request as StarletteRequest
 
