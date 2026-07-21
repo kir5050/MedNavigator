@@ -4,8 +4,6 @@ import json
 import logging
 import traceback as tb_module
 
-import httpx
-
 from fastapi import Depends, FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -85,33 +83,12 @@ app.add_middleware(
 )
 
 
-# --- Telegram error alerts ---
-
-async def send_telegram_alert(text: str):
-    token = settings.telegram_bot_token
-    chat_id = settings.telegram_chat_id
-    if not token or not chat_id:
-        return
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            await client.post(url, json=payload)
-    except Exception:
-        logger.warning("Failed to send Telegram alert")
-
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     trace = tb_module.format_exc()
-    logger.error("Unhandled error: %s\n%s", exc, trace)
-    alert = (
-        f"<b>MedNavigator ERROR</b>\n"
-        f"<b>URL:</b> {request.method} {request.url.path}\n"
-        f"<b>Error:</b> {type(exc).__name__}: {str(exc)[:200]}\n"
-        f"<pre>{trace[-500:]}</pre>"
+    logger.error(
+        "Unhandled error on %s %s: %s\n%s", request.method, request.url.path, exc, trace
     )
-    await send_telegram_alert(alert)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
@@ -172,15 +149,9 @@ async def startup():
 
         provider_names = [p.name for p in providers]
         logger.info("Started with providers: %s", provider_names)
-        await send_telegram_alert(
-            f"<b>MedNavigator STARTED</b>\nProviders: {', '.join(provider_names)}"
-        )
     except Exception:
         trace = tb_module.format_exc()
         logger.error("STARTUP FAILED:\n%s", trace)
-        await send_telegram_alert(
-            f"<b>MedNavigator STARTUP FAILED</b>\n<pre>{trace[-500:]}</pre>"
-        )
         raise
 
 
@@ -525,8 +496,7 @@ async def _read_voice_upload(request: Request) -> tuple[bytes, str]:
                 raise HTTPException(413, "Audio file too large")
     except ClientDisconnect:
         # Routine on mobile (screen lock, network switch mid-upload).
-        # Must not reach the global handler — that would 500 and fire a
-        # Telegram alert for a non-error.
+        # Must not reach the global handler — that would 500 for a non-error.
         raise HTTPException(400, "Upload aborted") from None
 
     message = email.parser.BytesParser(policy=email.policy.HTTP).parsebytes(

@@ -134,7 +134,7 @@ Backend (FastAPI)
 ```
 
 Доп. подсистемы: `slowapi` rate-limiting на чувствительных endpoints,
-глобальный exception handler → Telegram-алерт.
+глобальный exception handler (лог traceback + generic 500 наружу).
 
 ---
 
